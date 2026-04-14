@@ -64,6 +64,12 @@ export function Terminal() {
   const [chatbotMode, setChatbotMode] = useState(false);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  // Chatbot streaming: while the bot is "thinking" / "typing" a response,
+  // the input is pending and the incoming response is rendered below history
+  // with a thinking indicator then the typewriter effect.
+  const [pendingChat, setPendingChat] = useState<{ input: string; prompt: string; lines: string[] } | null>(null);
+  const [chatPhase, setChatPhase] = useState<'idle' | 'thinking' | 'typing'>('idle');
+  const [chatLines, setChatLines] = useState<string[]>([]);
 
   const emailInputRef = useRef<HTMLInputElement>(null);
   const shellInputRef = useRef<HTMLInputElement>(null);
@@ -75,17 +81,73 @@ export function Terminal() {
 
   const { displayedLines: statusLines, done: statusDone } = useTypewriter(SUBMITTING_LINES, stage === 'submitting');
 
+  // Transition the chat "thinking" phase to "typing" after a short delay.
+  useEffect(() => {
+    if (chatPhase !== 'thinking') return;
+    setChatLines([]);
+    const id = setTimeout(() => setChatPhase('typing'), 700);
+    return () => clearTimeout(id);
+  }, [chatPhase]);
+
+  // Drive the chat typewriter + commit to history when done. Owning both
+  // concerns in one effect avoids stale-state races between re-renders.
+  useEffect(() => {
+    if (chatPhase !== 'typing' || !pendingChat) return;
+    const target = pendingChat;
+    let canceled = false;
+    let lineIdx = 0;
+    let charIdx = 0;
+    const typed: string[] = [];
+
+    const CHAR_MS = 10;
+    const LINE_MS = 45;
+
+    const tick = () => {
+      if (canceled) return;
+      if (lineIdx >= target.lines.length) {
+        setShellHistory((prev) => [...prev, {
+          input: target.input,
+          output: target.lines,
+          prompt: target.prompt,
+        }]);
+        setPendingChat(null);
+        setChatPhase('idle');
+        setChatLines([]);
+        return;
+      }
+      const line = target.lines[lineIdx];
+      if (charIdx <= line.length) {
+        typed[lineIdx] = line.slice(0, charIdx);
+        setChatLines([...typed]);
+        charIdx++;
+        setTimeout(tick, CHAR_MS);
+      } else {
+        lineIdx++;
+        charIdx = 0;
+        setTimeout(tick, LINE_MS);
+      }
+    };
+
+    const start = setTimeout(tick, LINE_MS);
+    return () => {
+      canceled = true;
+      clearTimeout(start);
+    };
+  }, [chatPhase, pendingChat]);
+
   // Live clock for the status bar
   useEffect(() => {
     const id = setInterval(() => setClock(formatClock(new Date())), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Focus appropriate input per stage
+  // Focus appropriate input per stage. Also refocus the shell input whenever
+  // the chatbot animation finishes — the live prompt is unmounted while the
+  // bot types, so focus gets dropped and keypresses would silently no-op.
   useEffect(() => {
     if (stage === 'input') emailInputRef.current?.focus();
-    if (stage === 'shell') shellInputRef.current?.focus();
-  }, [stage]);
+    if (stage === 'shell' && chatPhase === 'idle') shellInputRef.current?.focus();
+  }, [stage, chatPhase]);
 
   // After status lines type out, submit the hidden form (no CORS restriction)
   useEffect(() => {
@@ -147,21 +209,29 @@ export function Terminal() {
     const KNOWN_COMMANDS = ['help', 'about', 'blog', 'links', 'film', 'chatbot', 'exit', 'subscribe', ''];
     const isKnownCommand = KNOWN_COMMANDS.includes(raw.toLowerCase());
 
-    let output: string[];
-
+    // Chatbot responses stream in (thinking → typewriter) rather than
+    // appearing instantly — makes the conversation feel less like a lookup.
     if (chatbotMode && !isKnownCommand) {
-      output = chatbotRespond(raw);
-    } else {
-      const result = await runCommand(raw);
-      output = result.lines;
-      if (result.enterChatbot) setChatbotMode(true);
-      if (result.exitChatbot) setChatbotMode(false);
+      const lines = chatbotRespond(raw);
+      setPendingChat({ input: raw, prompt: promptAtEntry, lines });
+      setChatPhase('thinking');
+      return;
     }
+
+    const result = await runCommand(raw);
+    const output = result.lines;
+    if (result.enterChatbot) setChatbotMode(true);
+    if (result.exitChatbot) setChatbotMode(false);
 
     setShellHistory((prev) => [...prev, { input: raw, output, prompt: promptAtEntry }]);
   }, [shellInput, chatbotMode]);
 
   const handleShellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Ignore Enter while the chatbot is still producing a response.
+    if (chatPhase !== 'idle' && e.key === 'Enter') {
+      e.preventDefault();
+      return;
+    }
     if (e.key === 'Enter') {
       handleShellSubmit();
     } else if (e.key === 'ArrowUp') {
@@ -246,6 +316,25 @@ export function Terminal() {
                 ))}
               </div>
             ))}
+
+            {/* Pending chatbot response — echoes the user input, shows a
+                thinking indicator, then types the response. */}
+            {pendingChat && (
+              <div>
+                <div className="flex items-center text-terminal-green glow mt-1">
+                  <span className="mr-2 shrink-0">{pendingChat.prompt}</span>
+                  <span>{pendingChat.input}</span>
+                </div>
+                {chatPhase === 'thinking' && (
+                  <div className="text-terminal-dim mt-1">
+                    <span className="cursor-blink">thinking…</span>
+                  </div>
+                )}
+                {chatPhase === 'typing' && chatLines.map((line, j) => (
+                  <div key={j} className="text-terminal-dim whitespace-pre">{line ? renderOutputLine(line) : '\u00a0'}</div>
+                ))}
+              </div>
+            )}
 
             {/* Email input prompt (subscribe sub-flow) */}
             {inSubscribeFlow && (
@@ -352,8 +441,8 @@ export function Terminal() {
               </div>
             )}
 
-            {/* Live shell prompt */}
-            {stage === 'shell' && (
+            {/* Live shell prompt — hidden while the chatbot is answering */}
+            {stage === 'shell' && chatPhase === 'idle' && (
               <div
                 className="relative flex items-center text-terminal-green glow mt-1 cursor-text"
                 onClick={() => shellInputRef.current?.focus()}

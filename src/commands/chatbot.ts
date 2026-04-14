@@ -638,19 +638,196 @@ const FALLBACKS = [
 
 let fallbackIndex = 0;
 
+// ─── NAME MEMORY ──────────────────────────────────────────────────────────────
+
+let userName: string | null = null;
+
+/** Exposed for tests — wipes any state the responder holds between turns. */
+export function resetChatbotState() {
+  userName = null;
+  fallbackIndex = 0;
+  rotations.clear();
+}
+
+const NAME_CAPTURE = /\b(?:my name is|i am called|call me|i'?m|i am|this is)\s+([a-z][a-z\-']{1,20})\b/i;
+const NAME_BLOCKLIST = new Set([
+  'a', 'an', 'the', 'not', 'here', 'bored', 'tired', 'fine', 'good', 'bad',
+  'sorry', 'confused', 'lost', 'back', 'done', 'hungry', 'sure', 'trying',
+  'looking', 'asking', 'wondering', 'working', 'learning', 'just', 'really',
+  'very', 'kinda', 'sort', 'maybe', 'probably',
+]);
+
+function tryCaptureName(input: string): string | null {
+  const m = input.match(NAME_CAPTURE);
+  if (!m) return null;
+  const raw = m[1].trim();
+  if (NAME_BLOCKLIST.has(raw.toLowerCase())) return null;
+  const cleaned = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  userName = cleaned;
+  return cleaned;
+}
+
+// ─── ELIZA REFLECTION ─────────────────────────────────────────────────────────
+
+const REFLECTIONS: Record<string, string> = {
+  'i': 'you', 'me': 'you', 'my': 'your', 'mine': 'yours', 'am': 'are',
+  'was': 'were', "i'm": 'you are', "i've": 'you have', "i'll": 'you will',
+  "i'd": 'you would', 'myself': 'yourself',
+  'you': 'I', 'your': 'my', 'yours': 'mine', 'are': 'am', "you're": 'I am',
+  "you've": 'I have', "you'll": 'I will', 'yourself': 'myself',
+};
+
+function reflect(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.!?,;:]+$/g, '')
+    .split(/\s+/)
+    .map((w) => REFLECTIONS[w] ?? w)
+    .join(' ')
+    .trim();
+}
+
+type ElizaRule = { pattern: RegExp; render: (m: RegExpMatchArray) => string[] };
+
+const ELIZA_RULES: ElizaRule[] = [
+  {
+    pattern: /\bi (?:feel|am feeling) (.+)/i,
+    render: (m) => [
+      '',
+      `  Do you often feel ${reflect(m[1])}?`,
+      '  (I ask as a program with zero feelings of my own.)',
+      '',
+    ],
+  },
+  {
+    pattern: /\bi (?:am|'m) (?!sorry|fine|okay|ok|good|bad|tired|bored)(.+)/i,
+    render: (m) => [
+      '',
+      `  Why are you ${reflect(m[1])}?`,
+      '  "Sometimes the questions are complicated and the answers are simple."',
+      '  — Dr. Seuss, probably not about this conversation.',
+      '',
+    ],
+  },
+  {
+    pattern: /\bi (?:want|need|wish|would like) (?:to )?(.+)/i,
+    render: (m) => [
+      '',
+      `  What would it mean for you to ${reflect(m[1])}?`,
+      '  Chidi would want to reason through that for 90 minutes.',
+      '',
+    ],
+  },
+  {
+    pattern: /\bi can(?:no|')?t (.+)/i,
+    render: (m) => [
+      '',
+      `  What would it take for you to ${reflect(m[1])}?`,
+      '  (This is the pep talk portion of the terminal.)',
+      '',
+    ],
+  },
+  {
+    pattern: /\bi (?:think|believe|guess|suppose) (.+)/i,
+    render: (m) => [
+      '',
+      `  Do you really think ${reflect(m[1])}?`,
+      '  "Not sure. Haven\'t decided yet." — Jeff Winger on every belief.',
+      '',
+    ],
+  },
+  {
+    pattern: /\byou are (.+)|you'?re (.+)/i,
+    render: (m) => [
+      '',
+      `  What makes you think I am ${(m[1] ?? m[2]).replace(/[.!?]+$/g, '')}?`,
+      '  I\'m just a bunch of regular expressions in a trench coat.',
+      '',
+    ],
+  },
+  {
+    pattern: /\bwhy (.+)\?/i,
+    render: (m) => [
+      '',
+      `  Why do you think ${reflect(m[1])}?`,
+      '  (Deflecting the question is the oldest chatbot trick.)',
+      '',
+    ],
+  },
+  {
+    pattern: /\?$/,
+    render: () => [
+      '',
+      '  Good question. I don\'t know, but I respect the curiosity.',
+      '  Try `help` if you want something I\'m actually equipped to answer.',
+      '',
+    ],
+  },
+  {
+    pattern: /^(yes|yeah|yep|yup|sure|definitely|absolutely)\b/i,
+    render: () => [
+      '',
+      '  You seem sure about that.',
+      '  Confidence is a virtue. Or a red flag. Depends on Chidi.',
+      '',
+    ],
+  },
+  {
+    pattern: /^(no|nope|nah|never)\b/i,
+    render: () => [
+      '',
+      '  Why not?',
+      '  "The more you deny it, the more I believe it." — Jean-Ralphio, probably.',
+      '',
+    ],
+  },
+];
+
 // ─── EXPORTED RESPONDER ───────────────────────────────────────────────────────
+
+function addressByName(lines: string[]): string[] {
+  if (!userName) return lines;
+  // Sprinkle the name into the first non-empty response line ~50% of the time
+  if (Math.random() > 0.5) return lines;
+  return lines.map((line, i) => {
+    if (i > 0 && line.trim().length > 0 && !line.includes(userName!)) {
+      return `  ${userName}, ${line.trimStart().charAt(0).toLowerCase()}${line.trimStart().slice(1)}`;
+    }
+    return line;
+  }).slice(0, lines.length);
+}
 
 export function chatbotRespond(input: string): string[] {
   const trimmed = input.trim();
   if (!trimmed) return [];
 
+  // 1. Name capture: if the user introduced themselves, remember and greet back.
+  const captured = tryCaptureName(trimmed);
+  if (captured) {
+    return [
+      '',
+      `  Nice to meet you, ${captured}.`,
+      '  I\'ll try to remember that. (Memory resets on page reload — sorry.)',
+      '  "People are friends, not food." — Bruce the Shark, Finding Nemo.',
+      '',
+    ];
+  }
+
+  // 2. Canned pattern quips (sitcom references for common inputs).
   for (let i = 0; i < PATTERNS.length; i++) {
     if (PATTERNS[i].keywords.test(trimmed)) {
-      return pick(i, PATTERNS[i].responses);
+      return addressByName(pick(i, PATTERNS[i].responses));
     }
   }
 
+  // 3. ELIZA-style reflection for freeform input.
+  for (const rule of ELIZA_RULES) {
+    const m = trimmed.match(rule.pattern);
+    if (m) return addressByName(rule.render(m));
+  }
+
+  // 4. Last resort: rotate through canned fallbacks.
   const response = FALLBACKS[fallbackIndex % FALLBACKS.length];
   fallbackIndex++;
-  return response;
+  return addressByName(response);
 }
