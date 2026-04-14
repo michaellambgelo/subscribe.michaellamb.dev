@@ -6,51 +6,20 @@ import { chatbotRespond } from '../commands/chatbot';
 const HAKANAI_ENDPOINT =
   'https://hakanai.io/campaign/33c130d9-115d-4297-9a4f-543ef77b3330/subscribe';
 
-const BOOT_LINES = [
-  'MICHAEL LAMB OS v2.0.26',
-  'Copyright (c) 2026 michaellamb.dev. All rights reserved.',
-  '',
-  '[BOOT] Initializing filesystem.............. OK',
-  '[BOOT] Loading blog.michaellamb.dev......... OK',
-  '[BOOT] Connecting to newsletter service..... OK',
-  '[BOOT] Awaiting subscriber input............ READY',
-  '',
-];
-
-const LAUNCH_LINES = [
-  'subscriber@michaellamb:~$ subscribe --interactive',
-  '',
-  '  subscribe v1.0.0  \u2014  michaellamb.dev newsletter client',
-  '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500',
-  '  New posts delivered straight to your inbox.',
-  '  No algorithms. No noise. Unsubscribe any time.',
-  '  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500',
-  '',
-];
-
 const SUBMITTING_LINES = [
   '> Validating address................... OK',
   '> Connecting to hakanai.io............. OK',
   '> Submitting subscription..............',
 ];
 
-type Stage = 'booting' | 'launching' | 'input' | 'submitting' | 'success' | 'shell' | 'error';
+type Stage = 'shell' | 'input' | 'submitting' | 'success' | 'error';
 
 type HistoryEntry = {
   input: string;
   output: string[];
+  /** Snapshot of the prompt at the moment the command was entered. */
+  prompt: string;
 };
-
-// Guard against undefined entries from the typewriter hook's sparse array
-function classifyLine(line: string | undefined): string {
-  if (line === undefined || line === '') return 'text-terminal-dim';
-  if (line.includes('OK')) return 'text-terminal-green glow-dim';
-  if (line.includes('READY')) return 'text-terminal-green glow';
-  if (line.startsWith('[BOOT]')) return 'text-terminal-dim';
-  if (line.startsWith('\u2500')) return 'text-terminal-dim';
-  if (line.includes('Skip the algorithm')) return 'text-terminal-green glow font-bold';
-  return 'text-terminal-dim';
-}
 
 const URL_RE = /https?:\/\/[^\s]+/g;
 
@@ -78,12 +47,17 @@ function renderOutputLine(line: string) {
   return parts.length > 0 ? parts : line;
 }
 
+function formatClock(d: Date) {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export function Terminal() {
-  const [stage, setStage] = useState<Stage>('booting');
+  const [stage, setStage] = useState<Stage>('shell');
+  const [clock, setClock] = useState(() => formatClock(new Date()));
   const [email, setEmail] = useState('');
   const [submittedEmail, setSubmittedEmail] = useState('');
   const [submitLines, setSubmitLines] = useState<string[]>([]);
-  const [quitInput, setQuitInput] = useState<string | null>(null); // non-null = arrived via Ctrl+C
   // Shell REPL state
   const [shellHistory, setShellHistory] = useState<HistoryEntry[]>([]);
   const [shellInput, setShellInput] = useState('');
@@ -95,21 +69,17 @@ export function Terminal() {
   const shellInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { displayedLines: bootLines, done: bootDone } = useTypewriter(BOOT_LINES, stage === 'booting');
-  const { displayedLines: launchLines, done: launchDone } = useTypewriter(LAUNCH_LINES, stage === 'launching');
   const { displayedLines: statusLines, done: statusDone } = useTypewriter(SUBMITTING_LINES, stage === 'submitting');
 
-  // booting → launching → input
+  // Live clock for the status bar
   useEffect(() => {
-    if (bootDone && stage === 'booting') setStage('launching');
-  }, [bootDone, stage]);
-
-  useEffect(() => {
-    if (launchDone && stage === 'launching') setStage('input');
-  }, [launchDone, stage]);
+    const id = setInterval(() => setClock(formatClock(new Date())), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Focus appropriate input per stage
   useEffect(() => {
@@ -138,13 +108,15 @@ export function Terminal() {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     setSubmitLines(['', '  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 100%', '']);
     setStage('success');
-    // Transition to shell after a beat so the user can read the success message
+    // Return to the shell prompt after a beat so the user can read the success message
     setTimeout(() => setStage('shell'), 1800);
   }, []);
 
-  // Scroll to bottom whenever content changes
+  // Scroll the body to its bottom whenever content changes — scope to the
+  // scroll container itself so ancestor scrollables (html/body) aren't affected.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   });
 
   // Email form submit
@@ -158,12 +130,21 @@ export function Terminal() {
   // Shell command execution
   const handleShellSubmit = useCallback(async () => {
     const raw = shellInput.trim();
+    const promptAtEntry = chatbotMode ? 'you \u203a' : 'subscriber@michaellamb:~$';
     setShellInput('');
     setHistoryIndex(-1);
 
     if (raw) setInputHistory((prev) => [raw, ...prev]);
 
-    const KNOWN_COMMANDS = ['help', 'about', 'blog', 'links', 'film', 'chatbot', 'exit', ''];
+    // `subscribe` is a UI-mode-switching command handled here rather than in runCommand
+    if (raw.toLowerCase() === 'subscribe') {
+      setShellHistory((prev) => [...prev, { input: raw, output: [], prompt: promptAtEntry }]);
+      setEmail('');
+      setStage('input');
+      return;
+    }
+
+    const KNOWN_COMMANDS = ['help', 'about', 'blog', 'links', 'film', 'chatbot', 'exit', 'subscribe', ''];
     const isKnownCommand = KNOWN_COMMANDS.includes(raw.toLowerCase());
 
     let output: string[];
@@ -177,7 +158,7 @@ export function Terminal() {
       if (result.exitChatbot) setChatbotMode(false);
     }
 
-    setShellHistory((prev) => [...prev, { input: raw, output }]);
+    setShellHistory((prev) => [...prev, { input: raw, output, prompt: promptAtEntry }]);
   }, [shellInput, chatbotMode]);
 
   const handleShellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -197,13 +178,10 @@ export function Terminal() {
   };
 
   const shellPrompt = chatbotMode ? 'you \u203a' : 'subscriber@michaellamb:~$';
-
-  const isPostBoot = stage !== 'booting';
-  const isPostLaunch = !['booting', 'launching'].includes(stage);
-  const isPostInput = !['booting', 'launching', 'input'].includes(stage);
+  const inSubscribeFlow = stage === 'input' || stage === 'submitting' || stage === 'success' || stage === 'error';
 
   return (
-    <div className="min-h-screen bg-terminal-bg scanlines flex items-center justify-center p-4 font-mono">
+    <div className="fixed inset-0 bg-terminal-bg scanlines flex flex-col font-mono overflow-hidden">
       {/* Hidden form + iframe — form GET bypasses CORS, iframe absorbs the redirect */}
       <form
         ref={formRef}
@@ -222,50 +200,65 @@ export function Terminal() {
         onLoad={handleIframeLoad}
       />
 
-      <div className="w-full max-w-2xl">
-        <div className="screen-glow rounded-lg border border-terminal-muted overflow-hidden">
-          {/* Title bar */}
-          <div className="flex items-center gap-2 px-4 py-2 bg-terminal-muted border-b border-terminal-muted">
-            <span className="w-3 h-3 rounded-full bg-red-600 opacity-80" />
-            <span className="w-3 h-3 rounded-full bg-yellow-500 opacity-80" />
-            <span className="w-3 h-3 rounded-full bg-green-500 opacity-80" />
-            <span className="ml-2 text-xs text-terminal-dim">
-              subscriber@michaellamb — newsletter v1
-            </span>
-          </div>
+      {/* tmux-style top status bar */}
+      <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0">
+        <div className="flex items-center gap-3 text-terminal-green glow-dim">
+          <span>[michaellamb]</span>
+          <span className="text-terminal-dim">0:</span>
+          <span>shell*</span>
+          <span className="text-terminal-dim">1:subscribe-</span>
+        </div>
+        <div className="flex items-center gap-3 text-terminal-dim">
+          <span>"subscriber@michaellamb"</span>
+          <span className="text-terminal-green glow-dim">{clock}</span>
+        </div>
+      </div>
 
-          {/* Terminal body */}
-          <div className="p-5 text-sm leading-relaxed min-h-64">
+      {/* Terminal body — scrolls internally */}
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto p-4 text-sm leading-relaxed"
+        onClick={() => {
+          if (stage === 'shell') shellInputRef.current?.focus();
+          if (stage === 'input') emailInputRef.current?.focus();
+        }}
+      >
 
-            {/* Boot lines */}
-            {bootLines.map((line, i) => (
-              <div key={i} className={classifyLine(line)}>{line || '\u00a0'}</div>
-            ))}
+            {/* MOTD */}
+            <div className="text-terminal-green glow font-bold">
+              michaellamb.dev newsletter shell — v1.0.0
+            </div>
+            <div className="text-terminal-dim">
+              Type <span className="text-terminal-green">`help`</span> for commands, or{' '}
+              <span className="text-terminal-green">`subscribe`</span> to join the newsletter.
+            </div>
+            <div>&nbsp;</div>
 
-            {/* Launch lines */}
-            {isPostBoot && launchLines.map((line, i) => (
-              <div key={i} className={
-                line.startsWith('subscriber@') ? 'text-terminal-green glow' :
-                line.startsWith('  \u2500') || line === '' ? 'text-terminal-dim' :
-                line.startsWith('  subscribe v') ? 'text-terminal-green font-bold' :
-                'text-terminal-dim'
-              }>
-                {line || '\u00a0'}
+            {/* Shell history */}
+            {shellHistory.map((entry, i) => (
+              <div key={i}>
+                <div className="flex items-center text-terminal-green glow mt-1">
+                  <span className="mr-2 shrink-0">{entry.prompt}</span>
+                  <span>{entry.input}</span>
+                </div>
+                {entry.output.map((line, j) => (
+                  <div key={j} className="text-terminal-dim whitespace-pre">{line ? renderOutputLine(line) : '\u00a0'}</div>
+                ))}
               </div>
             ))}
 
-            {/* Email input prompt */}
-            {isPostLaunch && (
+            {/* Email input prompt (subscribe sub-flow) */}
+            {inSubscribeFlow && (
               <div className="flex items-center text-terminal-green glow mt-1">
                 <span className="mr-2 shrink-0">Enter email address:</span>
                 {stage === 'input' ? (
                   <div
-                    className="flex items-center flex-1 min-w-0 cursor-text"
+                    className="relative flex items-center flex-1 min-w-0 cursor-text"
                     onClick={() => emailInputRef.current?.focus()}
                   >
                     <input
                       ref={emailInputRef}
-                      className="sr-only"
+                      className="absolute inset-0 w-full h-full opacity-0 bg-transparent border-0 outline-none"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
@@ -273,7 +266,7 @@ export function Terminal() {
                         if (e.key === 'Enter') { handleEmailSubmit(); }
                         if (e.key === 'c' && e.ctrlKey) {
                           e.preventDefault();
-                          setQuitInput(email);
+                          setEmail('');
                           setStage('shell');
                         }
                       }}
@@ -283,24 +276,9 @@ export function Terminal() {
                     <span className="text-terminal-green glow">{email}</span>
                     <span className="cursor-blink select-none">█</span>
                   </div>
-                ) : quitInput !== null ? (
-                  <>
-                    <span className="glow ml-1">{quitInput}</span>
-                    <span className="text-terminal-error ml-1">^C</span>
-                  </>
                 ) : (
                   <span className="glow ml-1">{submittedEmail}</span>
                 )}
-              </div>
-            )}
-
-            {/* Interrupted message */}
-            {quitInput !== null && stage === 'shell' && (
-              <div className="mt-1">
-                <div className="text-terminal-dim">subscribe: interrupted</div>
-                <div className="text-terminal-dim text-xs mt-1">
-                  Type <span className="text-terminal-green">`help`</span> for available commands.
-                </div>
               </div>
             )}
 
@@ -319,7 +297,7 @@ export function Terminal() {
             )}
 
             {/* Submitting status lines */}
-            {isPostInput && (
+            {(stage === 'submitting' || stage === 'success' || stage === 'error') && (
               <div className="mt-2">
                 {statusLines.map((line, i) => {
                   const isLast = i === statusLines.length - 1;
@@ -342,8 +320,8 @@ export function Terminal() {
               </div>
             )}
 
-            {/* Success block — only shown when subscription actually completed */}
-            {(stage === 'success' || stage === 'shell') && quitInput === null && (
+            {/* Success block */}
+            {(stage === 'success' || (stage === 'shell' && submittedEmail)) && (
               <div className="mt-3">
                 {submitLines.map((line, i) => (
                   <div key={i} className="text-terminal-green glow">{line || '\u00a0'}</div>
@@ -357,9 +335,6 @@ export function Terminal() {
                 <div className="text-terminal-dim">
                   You will receive new posts at:{' '}
                   <span className="text-terminal-green">{submittedEmail}</span>
-                </div>
-                <div className="text-terminal-dim text-xs mt-2">
-                  Type <span className="text-terminal-green">`help`</span> for more commands.
                 </div>
               </div>
             )}
@@ -377,53 +352,46 @@ export function Terminal() {
               </div>
             )}
 
-            {/* Shell REPL */}
+            {/* Live shell prompt */}
             {stage === 'shell' && (
-              <div className="mt-3">
-                {/* Command history */}
-                {shellHistory.map((entry, i) => (
-                  <div key={i}>
-                    <div className="flex items-center text-terminal-green glow mt-1">
-                      <span className="mr-2 shrink-0">{shellPrompt}</span>
-                      <span>{entry.input}</span>
-                    </div>
-                    {entry.output.map((line, j) => (
-                      <div key={j} className="text-terminal-dim whitespace-pre">{line ? renderOutputLine(line) : '\u00a0'}</div>
-                    ))}
-                  </div>
-                ))}
-
-                {/* Live prompt */}
-                <div
-                  className="flex items-center text-terminal-green glow mt-1 cursor-text"
-                  onClick={() => shellInputRef.current?.focus()}
-                >
-                  <span className="mr-2 shrink-0">{shellPrompt}</span>
-                  <input
-                    ref={shellInputRef}
-                    className="sr-only"
-                    type="text"
-                    value={shellInput}
-                    onChange={(e) => setShellInput(e.target.value)}
-                    onKeyDown={handleShellKeyDown}
-                    autoComplete="off"
-                    spellCheck={false}
-                    autoCorrect="off"
-                    autoCapitalize="none"
-                  />
-                  <span className="text-terminal-green glow">{shellInput}</span>
-                  <span className="cursor-blink select-none">█</span>
-                </div>
+              <div
+                className="relative flex items-center text-terminal-green glow mt-1 cursor-text"
+                onClick={() => shellInputRef.current?.focus()}
+              >
+                <span className="mr-2 shrink-0">{shellPrompt}</span>
+                <input
+                  ref={shellInputRef}
+                  className="absolute inset-0 w-full h-full opacity-0 bg-transparent border-0 outline-none"
+                  type="text"
+                  value={shellInput}
+                  onChange={(e) => setShellInput(e.target.value)}
+                  onKeyDown={handleShellKeyDown}
+                  autoComplete="off"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                />
+                <span className="text-terminal-green glow">{shellInput}</span>
+                <span className="cursor-blink select-none">█</span>
               </div>
             )}
 
-            <div ref={bottomRef} />
-          </div>
-        </div>
+        <div ref={bottomRef} />
+      </div>
 
-        {/* Footer */}
-        <div className="mt-3 text-center text-terminal-muted text-xs font-mono">
-          <a href="https://blog.michaellamb.dev" className="hover:text-terminal-dim transition-colors">
+      {/* tmux-style bottom keybinds bar */}
+      <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0 text-terminal-dim">
+        <div className="flex items-center gap-4">
+          <span><span className="text-terminal-green glow-dim">^C</span> quit</span>
+          <span><span className="text-terminal-green glow-dim">↑↓</span> history</span>
+          <span><span className="text-terminal-green glow-dim">help</span> commands</span>
+          <span><span className="text-terminal-green glow-dim">subscribe</span> newsletter</span>
+        </div>
+        <div>
+          <a
+            href="https://blog.michaellamb.dev"
+            className="hover:text-terminal-green transition-colors"
+          >
             ← blog.michaellamb.dev
           </a>
         </div>

@@ -4,6 +4,7 @@ export function helpCommand(): string[] {
     '  Available commands:',
     '',
     '  help        show this message',
+    '  subscribe   join the newsletter',
     '  about       who is michael lamb',
     '  blog        about the blog',
     '  links       all the links',

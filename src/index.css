@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pin the app to the viewport so h-screen actually fills it */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #0a0f0a;
+}
+
 /* CRT scanline overlay */
 .scanlines::after {
   content: '';
