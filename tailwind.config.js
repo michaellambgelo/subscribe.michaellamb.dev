@@ -8,6 +8,7 @@ export default {
           bg: '#0a0f0a',
           green: '#00ff41',
           dim: '#00661a',
+          'bar-dim': '#33cc55',
           muted: '#004d14',
           error: '#ff3333',
           warning: '#ffcc00',

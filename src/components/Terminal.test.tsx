@@ -74,6 +74,39 @@ describe('Terminal', () => {
     expect(livePrompt.textContent).toMatch(/subscriber@michaellamb:~\$/);
   });
 
+  it('exits chatbot mode on Ctrl+C', async () => {
+    const user = userEvent.setup();
+    render(<Terminal />);
+
+    await typeCommand(user, 'chatbot');
+    const input = document.querySelector<HTMLInputElement>('input[type="text"]');
+    if (!input) throw new Error('shell input not found');
+    input.focus();
+    await user.keyboard('{Control>}c{/Control}');
+
+    expect(await screen.findByText(/Exiting chatbot mode/)).toBeInTheDocument();
+    const prompts = shellPromptText();
+    const livePrompt = prompts[prompts.length - 1];
+    expect(livePrompt.textContent).toMatch(/subscriber@michaellamb:~\$/);
+  });
+
+  it('Ctrl+C in shell mode clears the current input without side effects', async () => {
+    const user = userEvent.setup();
+    render(<Terminal />);
+
+    const input = document.querySelector<HTMLInputElement>('input[type="text"]');
+    if (!input) throw new Error('shell input not found');
+    input.focus();
+    await user.type(input, 'half-typed');
+    await user.keyboard('{Control>}c{/Control}');
+
+    expect(input.value).toBe('');
+    // Prompt should still be the shell prompt (we weren't in chatbot mode)
+    const prompts = shellPromptText();
+    const livePrompt = prompts[prompts.length - 1];
+    expect(livePrompt.textContent).toMatch(/subscriber@michaellamb:~\$/);
+  });
+
   it('shows "command not found" for unknown commands', async () => {
     const user = userEvent.setup();
     render(<Terminal />);

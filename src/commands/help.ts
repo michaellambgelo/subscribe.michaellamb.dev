@@ -8,6 +8,7 @@ export function helpCommand(): string[] {
     '  about       who is michael lamb',
     '  blog        about the blog',
     '  links       all the links',
+    '  apps        open source apps',
     '  film        random film recommendation from letterboxd',
     '  chatbot     switch to conversational mode',
     '',
