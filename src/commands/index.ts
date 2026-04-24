@@ -3,6 +3,7 @@ import { aboutCommand } from './about';
 import { blogCommand } from './blog';
 import { linksCommand } from './links';
 import { filmCommand } from './film';
+import { appsCommand } from './apps';
 
 export type CommandResult = {
   lines: string[];
@@ -24,6 +25,8 @@ export async function runCommand(input: string): Promise<CommandResult> {
       return { lines: blogCommand() };
     case 'links':
       return { lines: linksCommand() };
+    case 'apps':
+      return { lines: appsCommand() };
     case 'film':
       return { lines: await filmCommand() };
     case 'chatbot':

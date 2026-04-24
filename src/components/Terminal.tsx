@@ -81,14 +81,6 @@ export function Terminal() {
 
   const { displayedLines: statusLines, done: statusDone } = useTypewriter(SUBMITTING_LINES, stage === 'submitting');
 
-  // Transition the chat "thinking" phase to "typing" after a short delay.
-  useEffect(() => {
-    if (chatPhase !== 'thinking') return;
-    setChatLines([]);
-    const id = setTimeout(() => setChatPhase('typing'), 700);
-    return () => clearTimeout(id);
-  }, [chatPhase]);
-
   // Drive the chat typewriter + commit to history when done. Owning both
   // concerns in one effect avoids stale-state races between re-renders.
   useEffect(() => {
@@ -206,15 +198,22 @@ export function Terminal() {
       return;
     }
 
-    const KNOWN_COMMANDS = ['help', 'about', 'blog', 'links', 'film', 'chatbot', 'exit', 'subscribe', ''];
+    const KNOWN_COMMANDS = ['help', 'about', 'blog', 'links', 'apps', 'film', 'chatbot', 'exit', 'subscribe', ''];
     const isKnownCommand = KNOWN_COMMANDS.includes(raw.toLowerCase());
 
     // Chatbot responses stream in (thinking → typewriter) rather than
     // appearing instantly — makes the conversation feel less like a lookup.
+    // Enforce a minimum "thinking" window so a fast fetch doesn't feel jarring.
     if (chatbotMode && !isKnownCommand) {
-      const lines = chatbotRespond(raw);
-      setPendingChat({ input: raw, prompt: promptAtEntry, lines });
+      setChatLines([]);
+      setPendingChat({ input: raw, prompt: promptAtEntry, lines: [] });
       setChatPhase('thinking');
+      const [lines] = await Promise.all([
+        chatbotRespond(raw),
+        new Promise<void>((resolve) => setTimeout(resolve, 700)),
+      ]);
+      setPendingChat({ input: raw, prompt: promptAtEntry, lines });
+      setChatPhase('typing');
       return;
     }
 
@@ -227,6 +226,27 @@ export function Terminal() {
   }, [shellInput, chatbotMode]);
 
   const handleShellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Ctrl+C: cancel any in-flight chatbot response, exit chatbot mode if active,
+    // otherwise just clear the current input line (matching a real terminal's SIGINT).
+    if (e.key === 'c' && e.ctrlKey) {
+      e.preventDefault();
+      setShellInput('');
+      setHistoryIndex(-1);
+      if (pendingChat) {
+        setPendingChat(null);
+        setChatLines([]);
+        setChatPhase('idle');
+      }
+      if (chatbotMode) {
+        setChatbotMode(false);
+        setShellHistory((prev) => [...prev, {
+          input: '^C',
+          output: ['', '  Exiting chatbot mode.', ''],
+          prompt: 'you ›',
+        }]);
+      }
+      return;
+    }
     // Ignore Enter while the chatbot is still producing a response.
     if (chatPhase !== 'idle' && e.key === 'Enter') {
       e.preventDefault();
@@ -274,11 +294,11 @@ export function Terminal() {
       <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0">
         <div className="flex items-center gap-3 text-terminal-green glow-dim">
           <span>[michaellamb]</span>
-          <span className="text-terminal-dim">0:</span>
+          <span className="text-terminal-bar-dim">0:</span>
           <span>shell*</span>
-          <span className="text-terminal-dim">1:subscribe-</span>
+          <span className="text-terminal-bar-dim">1:subscribe-</span>
         </div>
-        <div className="flex items-center gap-3 text-terminal-dim">
+        <div className="flex items-center gap-3 text-terminal-bar-dim">
           <span>"subscriber@michaellamb"</span>
           <span className="text-terminal-green glow-dim">{clock}</span>
         </div>
@@ -469,7 +489,7 @@ export function Terminal() {
       </div>
 
       {/* tmux-style bottom keybinds bar */}
-      <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0 text-terminal-dim">
+      <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0 text-terminal-bar-dim">
         <div className="flex items-center gap-4">
           <span><span className="text-terminal-green glow-dim">^C</span> quit</span>
           <span><span className="text-terminal-green glow-dim">↑↓</span> history</span>

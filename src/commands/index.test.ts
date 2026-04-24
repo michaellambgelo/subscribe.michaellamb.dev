@@ -58,4 +58,20 @@ describe('runCommand', () => {
     expect(blog.lines.length).toBeGreaterThan(0);
     expect(links.lines.length).toBeGreaterThan(0);
   });
+
+  it('lists open source apps for `apps`', async () => {
+    const { lines } = await runCommand('apps');
+    const text = lines.join('\n');
+    expect(text).toContain('Boxd Card');
+    expect(text).toContain('boxd-card.michaellamb.dev');
+    expect(text).toContain('Letterboxd Stats');
+    expect(text).toContain('letterboxd.michaellamb.dev');
+    expect(text).toContain('Discord Embed Builder');
+    expect(text).toContain('embed-builder.michaellamb.dev');
+  });
+
+  it('advertises `apps` in help output', async () => {
+    const { lines } = await runCommand('help');
+    expect(lines.join('\n')).toContain('apps');
+  });
 });

@@ -1,0 +1,18 @@
+name = "subscribe-chatbot"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+
+[ai]
+binding = "AI"
+
+# Replace `id` after running:
+#   wrangler kv namespace create RATE_LIMIT
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "c1d1c9a6348d4866a52f07ecadc78bf7"
+
+[vars]
+ALLOWED_ORIGINS = "https://subscribe.michaellamb.dev,http://localhost:5173"
+
+[observability]
+enabled = true
