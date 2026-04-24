@@ -239,7 +239,7 @@ const PATTERNS: Pattern[] = [
 
   // ── Math ───────────────────────────────────────────────────────────────────
   {
-    keywords: /\b(\d+\s*[\+\-\*\/]\s*\d+|calculate|math|equation|algebra|geometry|calculus|what is \d|how much is \d)/i,
+    keywords: /\b(\d+\s*[+\-*/]\s*\d+|calculate|math|equation|algebra|geometry|calculus|what is \d|how much is \d)/i,
     responses: [
       ['', '  I don\'t do math. I\'m a chatbot, not a calculator.', '  "I took an advanced accounting class in the 80s."', '  — Michael Scott, lying.', ''],
       ['', '  "The numbers, Mason! What do they mean?!"', '  I don\'t know. Use a calculator.', ''],
