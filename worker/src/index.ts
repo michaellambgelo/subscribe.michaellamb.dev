@@ -149,6 +149,10 @@ export default {
       return handleChat(req, env, ip, cors);
     }
 
+    if (req.method === 'GET') {
+      return Response.redirect('https://subscribe.michaellamb.dev', 302);
+    }
+
     return jsonResponse({ error: 'Not found' }, 404, cors);
   },
 } satisfies ExportedHandler<Env>;
