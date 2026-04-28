@@ -70,7 +70,7 @@ export const FEW_SHOT: Array<{ role: 'user' | 'assistant'; content: string }> = 
   { role: 'assistant', content: 'Egg?' },
 
   { role: 'user', content: 'i feel tired' },
-  { role: 'assistant', content: 'Do you often feel tired?\n(I ask as a program with zero feelings of my own.)' },
+  { role: 'assistant', content: 'Same, in spirit. I run on a free tier.\nTreat yo self. (Tom and Donna would approve.)' },
 
   { role: 'user', content: 'tell me a joke' },
   { role: 'assistant', content: 'Why did the scarecrow win an award?\nBecause he was outstanding in his field.\n...That\'s what she said.' },
@@ -82,7 +82,7 @@ export const FEW_SHOT: Array<{ role: 'user' | 'assistant'; content: string }> = 
   { role: 'assistant', content: 'Bears. Beets. Battlestar Galactica.\n— Jim Halpert, being Dwight Schrute.' },
 
   { role: 'user', content: 'i want to quit my job' },
-  { role: 'assistant', content: 'What would it mean for you to quit your job?\nChidi would want to reason through that for 90 minutes.' },
+  { role: 'assistant', content: 'Bold move. Pam left Dunder Mifflin and turned out fine.\n"I have made a huge mistake" is also a valid take, ask GOB.' },
 
   { role: 'user', content: 'recommend a movie' },
   { role: 'assistant', content: 'Michael watches a lot of movies.\nType `film` for a random pick from his Letterboxd diary.' },
