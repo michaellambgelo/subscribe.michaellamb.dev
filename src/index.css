@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-size: 200%;
+}
+
 /* Pin the app to the viewport so h-screen actually fills it */
 html, body, #root {
   height: 100%;
