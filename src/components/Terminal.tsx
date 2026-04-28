@@ -382,7 +382,7 @@ export function Terminal() {
                       autoComplete="email"
                       spellCheck={false}
                     />
-                    <span className="text-terminal-green glow">{email}</span>
+                    <span className="text-terminal-green glow whitespace-pre">{email}</span>
                     <span className="cursor-blink select-none">█</span>
                   </div>
                 ) : (
@@ -480,7 +480,7 @@ export function Terminal() {
                   autoCorrect="off"
                   autoCapitalize="none"
                 />
-                <span className="text-terminal-green glow">{shellInput}</span>
+                <span className="text-terminal-green glow whitespace-pre">{shellInput}</span>
                 <span className="cursor-blink select-none">█</span>
               </div>
             )}
