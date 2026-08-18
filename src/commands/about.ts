@@ -10,7 +10,7 @@ export function aboutCommand(): string[] {
     '  Current projects:',
     '    boxd-card              Chrome extension for Letterboxd cards',
     '    letterboxd-viewer      GitHub Pages film diary gallery',
-    '    discord-member-matchmaker  Spring Boot Discord bot',
+    '    discord-embed-builder  Vue + Worker Discord tooling',
     '    grafana-faro-proxy     Cloudflare Worker telemetry proxy',
     '',
     '  Find him at:',

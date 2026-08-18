@@ -1,0 +1,156 @@
+{
+ "parks-and-recreation": [
+  {
+   "title": "Parks and Recreation (season 1)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_1%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_1).txt",
+   "chars": 5030
+  },
+  {
+   "title": "Parks and Recreation (season 2)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_2%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_2).txt",
+   "chars": 50647
+  },
+  {
+   "title": "Parks and Recreation (season 3)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_3%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_3).txt",
+   "chars": 51772
+  },
+  {
+   "title": "Parks and Recreation (season 4)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_4%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_4).txt",
+   "chars": 46112
+  },
+  {
+   "title": "Parks and Recreation (season 5)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_5%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_5).txt",
+   "chars": 31679
+  },
+  {
+   "title": "Parks and Recreation (season 6)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_6%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_6).txt",
+   "chars": 41396
+  },
+  {
+   "title": "Parks and Recreation (season 7)",
+   "url": "https://en.wikiquote.org/wiki/Parks_and_Recreation_%28season_7%29",
+   "file": "raw/parks-and-recreation__Parks_and_Recreation_(season_7).txt",
+   "chars": 17946
+  }
+ ],
+ "the-office": [
+  {
+   "title": "The Office (season 1)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_1%29",
+   "file": "raw/the-office__The_Office_(season_1).txt",
+   "chars": 4388
+  },
+  {
+   "title": "The Office (season 2)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_2%29",
+   "file": "raw/the-office__The_Office_(season_2).txt",
+   "chars": 12369
+  },
+  {
+   "title": "The Office (season 3)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_3%29",
+   "file": "raw/the-office__The_Office_(season_3).txt",
+   "chars": 14502
+  },
+  {
+   "title": "The Office (season 4)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_4%29",
+   "file": "raw/the-office__The_Office_(season_4).txt",
+   "chars": 12899
+  },
+  {
+   "title": "The Office (season 5)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_5%29",
+   "file": "raw/the-office__The_Office_(season_5).txt",
+   "chars": 23316
+  },
+  {
+   "title": "The Office (season 6)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_6%29",
+   "file": "raw/the-office__The_Office_(season_6).txt",
+   "chars": 19986
+  },
+  {
+   "title": "The Office (season 7)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_7%29",
+   "file": "raw/the-office__The_Office_(season_7).txt",
+   "chars": 22090
+  },
+  {
+   "title": "The Office (season 8)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_8%29",
+   "file": "raw/the-office__The_Office_(season_8).txt",
+   "chars": 15736
+  },
+  {
+   "title": "The Office (season 9)",
+   "url": "https://en.wikiquote.org/wiki/The_Office_%28season_9%29",
+   "file": "raw/the-office__The_Office_(season_9).txt",
+   "chars": 18782
+  }
+ ],
+ "community": [
+  {
+   "title": "Community/Season 1",
+   "url": "https://en.wikiquote.org/wiki/Community/Season_1",
+   "file": "raw/community__Community_Season_1.txt",
+   "chars": 30573
+  },
+  {
+   "title": "Community/Season 2",
+   "url": "https://en.wikiquote.org/wiki/Community/Season_2",
+   "file": "raw/community__Community_Season_2.txt",
+   "chars": 29058
+  },
+  {
+   "title": "Community/Season 3",
+   "url": "https://en.wikiquote.org/wiki/Community/Season_3",
+   "file": "raw/community__Community_Season_3.txt",
+   "chars": 27634
+  },
+  {
+   "title": "Community/Season 4",
+   "url": "https://en.wikiquote.org/wiki/Community/Season_4",
+   "file": "raw/community__Community_Season_4.txt",
+   "chars": 10199
+  },
+  {
+   "title": "Community/Season 5",
+   "url": "https://en.wikiquote.org/wiki/Community/Season_5",
+   "file": "raw/community__Community_Season_5.txt",
+   "chars": 15655
+  },
+  {
+   "title": "Community/Season 6",
+   "url": "https://en.wikiquote.org/wiki/Community/Season_6",
+   "file": "raw/community__Community_Season_6.txt",
+   "chars": 18249
+  }
+ ],
+ "arrested-development": [
+  {
+   "title": "Arrested Development",
+   "url": "https://en.wikiquote.org/wiki/Arrested_Development",
+   "file": "raw/arrested-development__Arrested_Development.txt",
+   "chars": 47782
+  }
+ ],
+ "the-good-place": [
+  {
+   "title": "The Good Place",
+   "url": "https://en.wikiquote.org/wiki/The_Good_Place",
+   "file": "raw/the-good-place__The_Good_Place.txt",
+   "chars": 149939
+  }
+ ]
+}

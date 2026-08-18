@@ -1,0 +1,7 @@
+# Fetched Wikiquote page text and the full parse. Both are regenerable:
+#   python3 fetch.py && python3 parse.py
+# raw/ is ~750KB and parsed.json ~2.6MB; neither belongs in git.
+raw/
+parsed.json
+selected.json
+__pycache__/

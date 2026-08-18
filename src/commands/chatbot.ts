@@ -25,7 +25,7 @@ const FALLBACK_RESPONSES: string[][] = [
   [
     '',
     '  I lost the thread. Network hiccup, probably.',
-    '  "I\'ve made a huge mistake." — Michael Bluth.',
+    '  "I\'ve made a huge mistake." — GOB Bluth.',
     '  Try again in a sec.',
     '',
   ],

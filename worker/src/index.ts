@@ -1,4 +1,6 @@
 import { buildSystemPrompt, FEW_SHOT } from './system-prompt';
+import { checkTrigger } from './triggers';
+import { formatForPrompt, retrieve } from './retrieve';
 import { checkRateLimit } from './rate-limit';
 import { formatLines } from './parse';
 import {
@@ -83,6 +85,14 @@ async function handleChat(
     );
   }
 
+  // Deterministic easter eggs answer before the model is consulted. The site's
+  // copy invites visitors to type these lines, so they must fire every time
+  // rather than depending on the model following a few-shot at temperature.
+  const trigger = checkTrigger(input);
+  if (trigger) {
+    return jsonResponse({ lines: trigger }, 200, cors);
+  }
+
   // Resolve the session. A malformed id is treated as absent; a well-formed
   // but unknown or expired one gets a fresh id rather than being adopted, so
   // a caller can't choose their own KV key. Either way the turn proceeds.
@@ -96,8 +106,12 @@ async function handleChat(
   const suppliedName = sanitizeName(body.name);
   if (suppliedName) session.name = suppliedName;
 
+  // Ground the turn in real, sourced quotes rather than letting the model
+  // improvise one — improvised quotes come back misattributed.
+  const quoteBlock = formatForPrompt(retrieve(input));
+
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: buildSystemPrompt(session.name) },
+    { role: 'system', content: buildSystemPrompt(session.name, quoteBlock) },
     ...FEW_SHOT,
     ...session.turns,
     { role: 'user', content: input },
