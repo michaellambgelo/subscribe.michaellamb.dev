@@ -6,21 +6,20 @@
 // delegated to the Cloudflare Workers AI proxy at `/api/chat`, which is
 // seeded with a curated few-shot drawn from the original regex library so
 // the LLM replies in-voice.
+//
+// The conversation transcript is NOT held here. The worker owns it, keyed by
+// an opaque session id it mints and we echo back — a browser that could hand
+// the worker its own transcript could forge the assistant's turns and talk
+// the model out of its system prompt.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // In dev, Vite proxies /api/* to the local `wrangler dev` worker.
 // In prod, set VITE_CHAT_ENDPOINT in .env.production to the deployed worker URL
 // (e.g. https://subscribe-chatbot.<account>.workers.dev/chat).
 const CHAT_ENDPOINT = import.meta.env.VITE_CHAT_ENDPOINT ?? '/api/chat';
-const MAX_HISTORY = 6;
-
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
 
 let userName: string | null = null;
-let history: ChatMessage[] = [];
+let sessionId: string | null = null;
 
 const FALLBACK_RESPONSES: string[][] = [
   [
@@ -64,13 +63,6 @@ function tryCaptureName(input: string): string | null {
   return cleaned;
 }
 
-function pushHistory(role: ChatMessage['role'], content: string): void {
-  history.push({ role, content });
-  if (history.length > MAX_HISTORY) {
-    history = history.slice(-MAX_HISTORY);
-  }
-}
-
 function fallback(): string[] {
   const response = FALLBACK_RESPONSES[fallbackIndex % FALLBACK_RESPONSES.length];
   fallbackIndex++;
@@ -80,7 +72,7 @@ function fallback(): string[] {
 /** Exposed for tests — wipes any state the responder holds between turns. */
 export function resetChatbotState(): void {
   userName = null;
-  history = [];
+  sessionId = null;
   fallbackIndex = 0;
 }
 
@@ -101,8 +93,6 @@ export async function chatbotRespond(input: string): Promise<string[]> {
       '  "People are friends, not food." — Bruce the Shark, Finding Nemo.',
       '',
     ];
-    pushHistory('user', trimmed);
-    pushHistory('assistant', lines.map((l) => l.trim()).filter(Boolean).join(' '));
     return lines;
   }
 
@@ -112,23 +102,27 @@ export async function chatbotRespond(input: string): Promise<string[]> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: trimmed,
+        // Sent every turn rather than once: the worker stores it on the
+        // session, so repeats are idempotent, and a turn lost to a rate limit
+        // or a network blip can't strand the name outside the session.
         name: userName ?? undefined,
-        history,
+        sessionId: sessionId ?? undefined,
       }),
     });
 
-    const data = (await res.json().catch(() => null)) as { lines?: string[] } | null;
+    const data = (await res.json().catch(() => null)) as
+      | { lines?: string[]; sessionId?: string }
+      | null;
     if (!data || !Array.isArray(data.lines)) {
       return fallback();
     }
 
     // Both 200 and 429 return { lines } shaped bodies — render either.
-    const lines = data.lines;
-    pushHistory('user', trimmed);
-    if (res.ok) {
-      pushHistory('assistant', lines.map((l) => l.trim()).filter(Boolean).join(' '));
+    // A sessionId only rides along when the worker actually stored the turn.
+    if (typeof data.sessionId === 'string') {
+      sessionId = data.sessionId;
     }
-    return lines;
+    return data.lines;
   } catch {
     return fallback();
   }

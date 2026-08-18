@@ -1,6 +1,15 @@
 import { buildSystemPrompt, FEW_SHOT } from './system-prompt';
 import { checkRateLimit } from './rate-limit';
 import { formatLines } from './parse';
+import {
+  appendTurns,
+  isValidSessionId,
+  loadSession,
+  newSessionId,
+  sanitizeName,
+  saveSession,
+  type Session,
+} from './session';
 
 interface Env {
   AI: Ai;
@@ -8,19 +17,15 @@ interface Env {
   ALLOWED_ORIGINS: string;
 }
 
-interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 interface ChatRequest {
   input: string;
   name?: string;
-  history?: ChatMessage[];
+  sessionId?: string;
+  // NOTE: older clients also send `history`. It is deliberately absent from
+  // this interface and never read — the transcript is server-side only.
 }
 
 const MAX_INPUT_LEN = 500;
-const MAX_HISTORY_TURNS = 6;
 const RATE_LIMIT_PER_HOUR = 50;
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
@@ -39,19 +44,6 @@ function jsonResponse(body: unknown, status: number, headers: Record<string, str
     status,
     headers: { 'Content-Type': 'application/json', ...headers },
   });
-}
-
-function sanitizeHistory(history: unknown): ChatMessage[] {
-  if (!Array.isArray(history)) return [];
-  const clean: ChatMessage[] = [];
-  for (const m of history) {
-    if (typeof m !== 'object' || m === null) continue;
-    const { role, content } = m as Partial<ChatMessage>;
-    if ((role === 'user' || role === 'assistant') && typeof content === 'string') {
-      clean.push({ role, content: content.slice(0, MAX_INPUT_LEN) });
-    }
-  }
-  return clean.slice(-MAX_HISTORY_TURNS);
 }
 
 async function handleChat(
@@ -73,9 +65,6 @@ async function handleChat(
     return jsonResponse({ error: 'Input too long' }, 413, cors);
   }
 
-  const name = typeof body.name === 'string' ? body.name.slice(0, 40).trim() || undefined : undefined;
-  const history = sanitizeHistory(body.history);
-
   const rl = await checkRateLimit(env.RATE_LIMIT, ip, RATE_LIMIT_PER_HOUR);
   if (!rl.ok) {
     const minutes = Math.max(1, Math.ceil(rl.retryAfterSeconds / 60));
@@ -94,10 +83,23 @@ async function handleChat(
     );
   }
 
+  // Resolve the session. A malformed id is treated as absent; a well-formed
+  // but unknown or expired one gets a fresh id rather than being adopted, so
+  // a caller can't choose their own KV key. Either way the turn proceeds.
+  const requestedId = isValidSessionId(body.sessionId) ? body.sessionId : null;
+  const existing = requestedId ? await loadSession(env.RATE_LIMIT, requestedId) : null;
+  const sessionId = existing && requestedId ? requestedId : newSessionId();
+  const session: Session = existing ?? { turns: [] };
+
+  // The name is captured in-browser and echoed to us; it lives in the session
+  // from here on, so later turns don't have to be trusted for it.
+  const suppliedName = sanitizeName(body.name);
+  if (suppliedName) session.name = suppliedName;
+
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: buildSystemPrompt(name) },
+    { role: 'system', content: buildSystemPrompt(session.name) },
     ...FEW_SHOT,
-    ...history,
+    ...session.turns,
     { role: 'user', content: input },
   ];
 
@@ -130,7 +132,17 @@ async function handleChat(
     );
   }
 
-  return jsonResponse({ lines: formatLines(text) }, 200, cors);
+  const lines = formatLines(text);
+
+  // Only the worker ever writes an assistant turn.
+  const updated = appendTurns(
+    session,
+    { role: 'user', content: input },
+    { role: 'assistant', content: lines.map((l) => l.trim()).filter(Boolean).join(' ') },
+  );
+  await saveSession(env.RATE_LIMIT, sessionId, updated);
+
+  return jsonResponse({ lines, sessionId }, 200, cors);
 }
 
 export default {

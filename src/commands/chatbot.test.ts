@@ -3,14 +3,17 @@ import { chatbotRespond, resetChatbotState } from './chatbot';
 
 type FetchMock = Mock<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>;
 
-function mockFetch(lines: string[], status = 200): FetchMock {
+function mockFetch(lines: string[], status = 200, sessionId?: string): FetchMock {
   return vi.fn(async () =>
-    new Response(JSON.stringify({ lines }), {
+    new Response(JSON.stringify(sessionId ? { lines, sessionId } : { lines }), {
       status,
       headers: { 'Content-Type': 'application/json' },
     }),
   );
 }
+
+const SESSION_A = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+const SESSION_B = '9c858901-8a57-4791-81fe-4c455b099bc9';
 
 function bodyOf(spy: FetchMock, callIndex: number): Record<string, unknown> {
   const call = spy.mock.calls[callIndex];
@@ -68,7 +71,9 @@ describe('chatbotRespond', () => {
     );
     const body = bodyOf(fetchSpy, 0);
     expect(body.input).toBe('hello there');
-    expect(body.history).toEqual([]);
+    // The transcript lives on the worker now — the client never sends one.
+    expect(body.history).toBeUndefined();
+    expect(body.sessionId).toBeUndefined();
   });
 
   it('sends the captured name on subsequent requests', async () => {
@@ -81,16 +86,45 @@ describe('chatbotRespond', () => {
     expect(body.name).toBe('Sam');
   });
 
-  it('accumulates conversation history across turns', async () => {
-    const fetchSpy = mockFetch(['', '  response', '']);
+  it('round-trips the server-issued session id on later turns', async () => {
+    const fetchSpy = mockFetch(['', '  response', ''], 200, SESSION_A);
     vi.stubGlobal('fetch', fetchSpy);
     await chatbotRespond('first message');
     await chatbotRespond('second message');
-    const secondBody = bodyOf(fetchSpy, 1);
-    expect(secondBody.history).toEqual([
-      { role: 'user', content: 'first message' },
-      { role: 'assistant', content: 'response' },
-    ]);
+    expect(bodyOf(fetchSpy, 0).sessionId).toBeUndefined();
+    expect(bodyOf(fetchSpy, 1).sessionId).toBe(SESSION_A);
+    // No transcript is ever sent, on any turn.
+    expect(bodyOf(fetchSpy, 1).history).toBeUndefined();
+  });
+
+  it('adopts a re-issued session id when the worker mints a new one', async () => {
+    const fetchSpy = mockFetch(['', '  response', ''], 200, SESSION_A);
+    vi.stubGlobal('fetch', fetchSpy);
+    await chatbotRespond('first message');
+    fetchSpy.mockImplementation(async () =>
+      new Response(JSON.stringify({ lines: ['', '  fresh', ''], sessionId: SESSION_B }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await chatbotRespond('second message');
+    await chatbotRespond('third message');
+    expect(bodyOf(fetchSpy, 2).sessionId).toBe(SESSION_B);
+  });
+
+  it('keeps its session id when a response carries none', async () => {
+    const fetchSpy = mockFetch(['', '  response', ''], 200, SESSION_A);
+    vi.stubGlobal('fetch', fetchSpy);
+    await chatbotRespond('first message');
+    fetchSpy.mockImplementation(async () =>
+      new Response(JSON.stringify({ lines: ['', '  hourly limit', ''] }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await chatbotRespond('second message');
+    await chatbotRespond('third message');
+    expect(bodyOf(fetchSpy, 2).sessionId).toBe(SESSION_A);
   });
 
   it('surfaces a rate-limit response as lines', async () => {
@@ -115,8 +149,8 @@ describe('chatbotRespond', () => {
     expect(out.length).toBeGreaterThan(0);
   });
 
-  it('resetChatbotState clears name, history, and fallback rotation', async () => {
-    const fetchSpy = mockFetch(['', '  ok', '']);
+  it('resetChatbotState clears name, session, and fallback rotation', async () => {
+    const fetchSpy = mockFetch(['', '  ok', ''], 200, SESSION_A);
     vi.stubGlobal('fetch', fetchSpy);
     await chatbotRespond('my name is Testuser');
     await chatbotRespond('hello');
@@ -124,6 +158,7 @@ describe('chatbotRespond', () => {
     await chatbotRespond('again');
     const lastBody = bodyOf(fetchSpy, fetchSpy.mock.calls.length - 1);
     expect(lastBody.name).toBeUndefined();
-    expect(lastBody.history).toEqual([]);
+    expect(lastBody.sessionId).toBeUndefined();
+    expect(lastBody.history).toBeUndefined();
   });
 });
