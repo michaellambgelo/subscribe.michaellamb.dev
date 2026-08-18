@@ -13,6 +13,8 @@
 // the model out of its system prompt.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { FALLBACK_QUOTES, GREETING_QUOTES, type BankedQuote } from './banked-quotes';
+
 // In dev, Vite proxies /api/* to the local `wrangler dev` worker.
 // In prod, set VITE_CHAT_ENDPOINT in .env.production to the deployed worker URL
 // (e.g. https://subscribe-chatbot.<account>.workers.dev/chat).
@@ -21,28 +23,25 @@ const CHAT_ENDPOINT = import.meta.env.VITE_CHAT_ENDPOINT ?? '/api/chat';
 let userName: string | null = null;
 let sessionId: string | null = null;
 
-const FALLBACK_RESPONSES: string[][] = [
-  [
-    '',
-    '  I lost the thread. Network hiccup, probably.',
-    '  "I\'ve made a huge mistake." — GOB Bluth.',
-    '  Try again in a sec.',
-    '',
-  ],
-  [
-    '',
-    '  The worker didn\'t answer. Cool. Cool cool cool.',
-    '  (Not cool.) Give it another try.',
-    '',
-  ],
-  [
-    '',
-    '  "I understand nothing." — Michael Bluth',
-    '  Specifically, I understand nothing because the chat endpoint',
-    '  didn\'t respond. Try again?',
-    '',
-  ],
+/**
+ * Offline fallbacks. Every quote here comes from the bank via
+ * `banked-quotes.ts` — these run when the Worker is unreachable, so the
+ * server-side attribution validator never sees them and cannot correct a
+ * wrong one. Previously these were hand-written and drifted: one credited
+ * GOB's line to Michael Bluth, and one quoted Finding Nemo, which is not a
+ * show this bot claims to know.
+ */
+function quoteLine(x: BankedQuote): string {
+  return `  "${x.q}" — ${x.who}, ${x.show}`;
+}
+
+const FALLBACK_INTROS: string[] = [
+  '  I lost the thread. Network hiccup, probably.',
+  "  The worker didn't answer. Cool. Cool cool cool.",
+  '  No response from the chat endpoint.',
+  '  Something on my end fell over.',
 ];
+
 let fallbackIndex = 0;
 
 // Only unambiguous introductions. A bare "i'm X" / "i am X" was also matched
@@ -69,9 +68,14 @@ function tryCaptureName(input: string): string | null {
 }
 
 function fallback(): string[] {
-  const response = FALLBACK_RESPONSES[fallbackIndex % FALLBACK_RESPONSES.length];
-  fallbackIndex++;
-  return response;
+  const i = fallbackIndex++;
+  return [
+    '',
+    FALLBACK_INTROS[i % FALLBACK_INTROS.length],
+    quoteLine(FALLBACK_QUOTES[i % FALLBACK_QUOTES.length]),
+    '  Try again in a sec.',
+    '',
+  ];
 }
 
 /** Exposed for tests — wipes any state the responder holds between turns. */
@@ -95,7 +99,7 @@ export async function chatbotRespond(input: string): Promise<string[]> {
       '',
       `  Nice to meet you, ${captured}.`,
       '  I\'ll try to remember that. (Memory resets on page reload — sorry.)',
-      '  "People are friends, not food." — Bruce the Shark, Finding Nemo.',
+      quoteLine(GREETING_QUOTES[0]),
       '',
     ];
     return lines;
