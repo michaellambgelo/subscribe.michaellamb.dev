@@ -43,6 +43,18 @@ describe('chatbotRespond', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('does not treat a feeling as a name', async () => {
+    // "i'm anxious" once greeted the user as "Anxious". These read as
+    // introductions to a naive regex and never are.
+    const fetchSpy = mockFetch(['', '  (model response)', '']);
+    vi.stubGlobal('fetch', fetchSpy);
+    for (const said of ["i'm anxious", "i'm lonely", 'i am sad', "i'm exhausted"]) {
+      const out = await chatbotRespond(said);
+      expect(out.join('\n')).not.toContain('Nice to meet you');
+    }
+    expect(fetchSpy).toHaveBeenCalledTimes(4);
+  });
+
   it('captures name from "call me X"', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const out = await chatbotRespond('call me Sarah');

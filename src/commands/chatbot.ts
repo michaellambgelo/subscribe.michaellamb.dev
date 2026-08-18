@@ -45,7 +45,12 @@ const FALLBACK_RESPONSES: string[][] = [
 ];
 let fallbackIndex = 0;
 
-const NAME_CAPTURE = /\b(?:my name is|i am called|call me|i'?m|i am|this is)\s+([a-z][a-z\-']{1,20})\b/i;
+// Only unambiguous introductions. A bare "i'm X" / "i am X" was also matched
+// once, which meant "i'm anxious" greeted the user as Anxious — the mis-fire
+// landed hardest exactly when someone was saying something vulnerable. A
+// blocklist could never cover every adjective, so those two patterns are gone;
+// failing to catch a name is a far cheaper mistake than inventing one.
+const NAME_CAPTURE = /\b(?:my name is|i am called|call me|this is)\s+([a-z][a-z\-']{1,20})\b/i;
 const NAME_BLOCKLIST = new Set([
   'a', 'an', 'the', 'not', 'here', 'bored', 'tired', 'fine', 'good', 'bad',
   'sorry', 'confused', 'lost', 'back', 'done', 'hungry', 'sure', 'trying',

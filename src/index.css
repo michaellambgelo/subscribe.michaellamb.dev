@@ -78,3 +78,19 @@ html, body, #root {
   font-size: inherit;
   width: 100%;
 }
+
+/*
+ * Terminal output lines.
+ *
+ * `white-space: pre` preserves the two-space indent the command modules emit
+ * but refuses to wrap, so long lines ran off screen. `pre-wrap` keeps the
+ * indent and wraps; the padding/negative-indent pair gives wrapped
+ * continuations a hanging indent so they line up under the first line instead
+ * of falling back to column zero.
+ */
+.terminal-line {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding-left: 2ch;
+  text-indent: -2ch;
+}

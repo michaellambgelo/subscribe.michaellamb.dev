@@ -332,7 +332,7 @@ export function Terminal() {
                   <span>{entry.input}</span>
                 </div>
                 {entry.output.map((line, j) => (
-                  <div key={j} className="text-terminal-dim whitespace-pre">{line ? renderOutputLine(line) : '\u00a0'}</div>
+                  <div key={j} className="text-terminal-dim terminal-line">{line ? renderOutputLine(line) : '\u00a0'}</div>
                 ))}
               </div>
             ))}
@@ -351,7 +351,7 @@ export function Terminal() {
                   </div>
                 )}
                 {chatPhase === 'typing' && chatLines.map((line, j) => (
-                  <div key={j} className="text-terminal-dim whitespace-pre">{line ? renderOutputLine(line) : '\u00a0'}</div>
+                  <div key={j} className="text-terminal-dim terminal-line">{line ? renderOutputLine(line) : '\u00a0'}</div>
                 ))}
               </div>
             )}
