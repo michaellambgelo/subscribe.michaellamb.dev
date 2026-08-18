@@ -1,6 +1,6 @@
 export function appsCommand(): string[] {
   const apps: Array<[string, string]> = [
-    ['Boxd Card Chrome Extension and Web App', 'https://boxd-card.michaellamb.dev'],
+    ['Boxd Card Chrome Extension and Web App', 'https://boxd-card.com'],
     ['Custom Letterboxd Stats Dashboard', 'https://letterboxd.michaellamb.dev'],
     ['Discord Embed Builder', 'https://embed-builder.michaellamb.dev'],
   ];

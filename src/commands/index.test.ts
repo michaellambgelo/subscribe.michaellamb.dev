@@ -63,7 +63,7 @@ describe('runCommand', () => {
     const { lines } = await runCommand('apps');
     const text = lines.join('\n');
     expect(text).toContain('Boxd Card');
-    expect(text).toContain('boxd-card.michaellamb.dev');
+    expect(text).toContain('boxd-card.com');
     expect(text).toContain('Letterboxd Stats');
     expect(text).toContain('letterboxd.michaellamb.dev');
     expect(text).toContain('Discord Embed Builder');
