@@ -1,0 +1,22 @@
+{
+  "findings": [
+    {
+      "category": "security",
+      "severity": "error",
+      "title": "js-yaml 4.3.1 — high-severity DoS (GHSA-2883-xcg3-v3hh)",
+      "detail": "js-yaml >=4.0.0 <4.3.2 does not limit CPU use for empty YAML merge sources, enabling a remote attacker to cause denial-of-service (CWE-400/407, CVSS 7.5). Installed version 4.3.1 is a transitive dev dependency via node_modules/@eslint/eslintrc. A fix is available (upgrade to >=4.3.2).",
+      "actionable": true,
+      "suggested_fix": "Run `npm audit fix` to update the package-lock.json entry for js-yaml to >=4.3.2"
+    },
+    {
+      "category": "outdated_dep",
+      "severity": "warn",
+      "title": "react / react-dom pinned to v18.3.1; latest is v19.3.0 (major bump)",
+      "detail": "package.json declares `react` and `react-dom` at ^18.3.1 (resolved to 18.3.1). The latest release is 19.3.0, one major version ahead. React 19 has breaking changes; this is flagged for awareness, not automated upgrade.",
+      "actionable": false,
+      "suggested_fix": "Manually evaluate React 19 migration guide and update package.json + code to ^19.3.0 when ready"
+    }
+  ],
+  "action": "audit_only",
+  "pr_url": null
+}
