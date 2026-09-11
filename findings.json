@@ -9,6 +9,14 @@
       "suggested_fix": "Run `npm audit fix` to update the package-lock.json entry for js-yaml to >=4.3.2"
     },
     {
+      "category": "failing_ci",
+      "severity": "warn",
+      "title": "Draft PR could not be created — PAT lacks GraphQL write scope",
+      "detail": "Branch claude-maintenance/2026-09-11-fix-js-yaml-cve was pushed successfully and contains the js-yaml 4.3.1→4.3.2 fix (all 89 tests pass, lint clean, build clean). However `gh pr create` failed: 'Resource not accessible by personal access token' — the GH_TOKEN used by the gh CLI does not have the `pull_requests: write` scope required by the GraphQL createPullRequest mutation. A human can open the PR manually from the pushed branch.",
+      "actionable": false,
+      "suggested_fix": "Grant the workflow token `pull_requests: write` permission, or manually open a PR from branch claude-maintenance/2026-09-11-fix-js-yaml-cve"
+    },
+    {
       "category": "outdated_dep",
       "severity": "warn",
       "title": "react / react-dom pinned to v18.3.1; latest is v19.3.0 (major bump)",
