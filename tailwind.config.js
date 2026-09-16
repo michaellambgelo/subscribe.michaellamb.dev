@@ -7,7 +7,7 @@ export default {
         terminal: {
           bg: '#0a0f0a',
           green: '#00ff41',
-          dim: '#00661a',
+          dim: '#00a32a',
           'bar-dim': '#33cc55',
           muted: '#004d14',
           error: '#ff3333',

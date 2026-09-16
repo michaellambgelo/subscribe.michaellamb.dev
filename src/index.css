@@ -14,6 +14,20 @@ html, body, #root {
   background: #0a0f0a;
 }
 
+/*
+ * Terminal type scale.
+ *
+ * The root stays at 200% (everything outside the terminal is sized against it),
+ * but the shell pane sizes itself against the viewport instead. Above a ~666px
+ * viewport this resolves to the same 28px the app has always used, so desktop
+ * is unchanged; below it the whole pane — body copy, status bars, padding —
+ * scales down together via `em`, which is what keeps the 25-character prompt
+ * from overflowing a 375px phone.
+ */
+.terminal-app {
+  font-size: clamp(14px, 4.2vw, 28px);
+}
+
 /* CRT scanline overlay */
 .scanlines::after {
   content: '';
@@ -72,11 +86,35 @@ html, body, #root {
   background: transparent;
   border: none;
   outline: none;
-  caret-color: transparent; /* we render our own cursor */
+  caret-color: #00ff41;
+  /* A real caret that tracks the edit position, drawn as a block where the
+     browser supports it — the old fake `block` span always sat at the end of
+     the line, so arrowing into the middle of a command put it in the wrong
+     place. Degrades to a normal bar caret elsewhere. */
+  caret-shape: block;
   color: #00ff41;
   font-family: inherit;
   font-size: inherit;
   width: 100%;
+}
+
+.terminal-input::placeholder {
+  color: #00a32a;
+  opacity: 1;
+}
+
+/*
+ * Focus ring.
+ *
+ * Every interactive element here sits on near-black, so the default UA outline
+ * is invisible. `:focus-visible` keeps the ring off mouse clicks (a terminal
+ * that boxes itself the instant you click it looks broken) while guaranteeing
+ * keyboard users can always see where they are — WCAG 2.4.7.
+ */
+.terminal-app :focus-visible {
+  outline: 2px solid #00ff41;
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /*
@@ -93,4 +131,33 @@ html, body, #root {
   overflow-wrap: break-word;
   padding-left: 2ch;
   text-indent: -2ch;
+}
+
+/*
+ * Reduced motion.
+ *
+ * The CRT treatment is the point of this page, so this only fires for people
+ * who have actually asked for less: the cursor stops blinking, the scanline
+ * overlay comes off, and the typewriter effects render their output instantly
+ * (handled in useTypewriter and the chat effect in Terminal.tsx).
+ */
+@media (prefers-reduced-motion: reduce) {
+  .cursor-blink {
+    animation: none;
+  }
+
+  .progress-fill {
+    animation: none;
+    width: 100%;
+  }
+
+  .scanlines::after {
+    display: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
 }

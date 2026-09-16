@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTypewriter } from '../hooks/useTypewriter';
+import { usePrefersReducedMotion } from '../hooks/usePrefersReducedMotion';
 import { runCommand } from '../commands/index';
 import { chatbotRespond } from '../commands/chatbot';
 
@@ -12,7 +13,14 @@ const SUBMITTING_LINES = [
   '> Submitting subscription..............',
 ];
 
-type Stage = 'shell' | 'input' | 'submitting' | 'success' | 'error';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Subscribe-flow state. The email form is always on the page now, so there is
+ * no longer a stage for "showing the form" — `idle` means it is accepting
+ * input, and the rest are the submit lifecycle.
+ */
+type Stage = 'idle' | 'submitting' | 'success' | 'error';
 
 type HistoryEntry = {
   input: string;
@@ -53,9 +61,10 @@ function formatClock(d: Date) {
 }
 
 export function Terminal() {
-  const [stage, setStage] = useState<Stage>('shell');
+  const [stage, setStage] = useState<Stage>('idle');
   const [clock, setClock] = useState(() => formatClock(new Date()));
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [submittedEmail, setSubmittedEmail] = useState('');
   const [submitLines, setSubmitLines] = useState<string[]>([]);
   // Shell REPL state
@@ -74,11 +83,18 @@ export function Terminal() {
   const emailInputRef = useRef<HTMLInputElement>(null);
   const shellInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const subscribeRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pendingRef = useRef(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The subscribe panel sits at the top of the scroll area while the
+  // auto-scroller pins to the bottom, so `subscribe` has to win that fight.
+  // Bumping this counter requests a jump; the effect that honours it is
+  // declared *after* the auto-scroller, and React runs effects in declaration
+  // order, so the jump is always the last word on scroll position.
+  const [jumpRequest, setJumpRequest] = useState(0);
 
+  const reducedMotion = usePrefersReducedMotion();
   const { displayedLines: statusLines, done: statusDone } = useTypewriter(SUBMITTING_LINES, stage === 'submitting');
 
   // Drive the chat typewriter + commit to history when done. Owning both
@@ -86,6 +102,25 @@ export function Terminal() {
   useEffect(() => {
     if (chatPhase !== 'typing' || !pendingChat) return;
     const target = pendingChat;
+
+    const commit = () => {
+      setShellHistory((prev) => [...prev, {
+        input: target.input,
+        output: target.lines,
+        prompt: target.prompt,
+      }]);
+      setPendingChat(null);
+      setChatPhase('idle');
+      setChatLines([]);
+    };
+
+    // Reduced motion: skip the per-character reveal entirely. The response
+    // still lands in history, which is what the live region announces.
+    if (reducedMotion) {
+      commit();
+      return;
+    }
+
     let canceled = false;
     let lineIdx = 0;
     let charIdx = 0;
@@ -97,14 +132,7 @@ export function Terminal() {
     const tick = () => {
       if (canceled) return;
       if (lineIdx >= target.lines.length) {
-        setShellHistory((prev) => [...prev, {
-          input: target.input,
-          output: target.lines,
-          prompt: target.prompt,
-        }]);
-        setPendingChat(null);
-        setChatPhase('idle');
-        setChatLines([]);
+        commit();
         return;
       }
       const line = target.lines[lineIdx];
@@ -125,7 +153,7 @@ export function Terminal() {
       canceled = true;
       clearTimeout(start);
     };
-  }, [chatPhase, pendingChat]);
+  }, [chatPhase, pendingChat, reducedMotion]);
 
   // Live clock for the status bar
   useEffect(() => {
@@ -133,15 +161,15 @@ export function Terminal() {
     return () => clearInterval(id);
   }, []);
 
-  // Focus appropriate input per stage. Also refocus the shell input whenever
-  // the chatbot animation finishes — the live prompt is unmounted while the
-  // bot types, so focus gets dropped and keypresses would silently no-op.
+  // Refocus the shell input whenever the chatbot animation finishes — the live
+  // prompt is unmounted while the bot types, so focus gets dropped and
+  // keypresses would silently no-op.
   useEffect(() => {
-    if (stage === 'input') emailInputRef.current?.focus();
-    if (stage === 'shell' && chatPhase === 'idle') shellInputRef.current?.focus();
-  }, [stage, chatPhase]);
+    if (chatPhase === 'idle') shellInputRef.current?.focus();
+  }, [chatPhase]);
 
-  // After status lines type out, submit the hidden form (no CORS restriction)
+  // After status lines type out, submit the real form into the hidden iframe
+  // (a plain GET navigation, so no CORS restriction applies).
   useEffect(() => {
     if (statusDone && stage === 'submitting') {
       pendingRef.current = true;
@@ -160,41 +188,77 @@ export function Terminal() {
     if (!pendingRef.current) return;
     pendingRef.current = false;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    setSubmitLines(['', '  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588 100%', '']);
+    setSubmitLines(['', '  ██████████████████████████████ 100%', '']);
     setStage('success');
-    // Return to the shell prompt after a beat so the user can read the success message
-    setTimeout(() => setStage('shell'), 1800);
   }, []);
 
   // Scroll the body to its bottom whenever content changes — scope to the
   // scroll container itself so ancestor scrollables (html/body) aren't affected.
+  //
+  // The dependency list matters: this used to run on every render, which meant
+  // the once-a-second clock tick re-pinned the view to the bottom. Harmless
+  // when the only thing down there was the prompt, but it fought `subscribe`
+  // for the scroll position and dragged the view off the focused email field a
+  // second after jumping to it.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  });
+  }, [shellHistory, chatLines, chatPhase, pendingChat, stage, statusLines, submitLines, emailError]);
+
+  // Honour a `subscribe` jump. Declared after the auto-scroller on purpose —
+  // on the render where both fire, this one runs second and wins.
+  useEffect(() => {
+    if (jumpRequest === 0) return;
+    subscribeRef.current?.scrollIntoView({
+      block: 'center',
+      behavior: reducedMotion ? 'auto' : 'smooth',
+    });
+    emailInputRef.current?.focus();
+  }, [jumpRequest, reducedMotion]);
+
+  /** Bring the subscribe panel back into view and put the caret in it. */
+  const focusSubscribeForm = useCallback(() => {
+    setJumpRequest((n) => n + 1);
+  }, []);
 
   // Email form submit
-  const handleEmailSubmit = useCallback(() => {
+  const handleEmailSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (stage === 'submitting') return;
     const trimmed = email.trim();
-    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return;
+    if (!trimmed) {
+      setEmailError('No address entered. Type your email above, then press Enter.');
+      emailInputRef.current?.focus();
+      return;
+    }
+    if (!EMAIL_RE.test(trimmed)) {
+      setEmailError(`Not a valid email address: ${trimmed}`);
+      emailInputRef.current?.focus();
+      return;
+    }
+    setEmailError('');
     setSubmittedEmail(trimmed);
     setStage('submitting');
-  }, [email]);
+  }, [email, stage]);
 
   // Shell command execution
   const handleShellSubmit = useCallback(async () => {
     const raw = shellInput.trim();
-    const promptAtEntry = chatbotMode ? 'you \u203a' : 'subscriber@michaellamb:~$';
+    const promptAtEntry = chatbotMode ? 'you ›' : 'subscriber@michaellamb:~$';
     setShellInput('');
     setHistoryIndex(-1);
 
     if (raw) setInputHistory((prev) => [raw, ...prev]);
 
-    // `subscribe` is a UI-mode-switching command handled here rather than in runCommand
+    // `subscribe` no longer summons the form — the form is always on the page,
+    // so the command just takes you to it.
     if (raw.toLowerCase() === 'subscribe') {
-      setShellHistory((prev) => [...prev, { input: raw, output: [], prompt: promptAtEntry }]);
-      setEmail('');
-      setStage('input');
+      setShellHistory((prev) => [...prev, {
+        input: raw,
+        output: ['', '  Jumping to the subscribe form.', ''],
+        prompt: promptAtEntry,
+      }]);
+      focusSubscribeForm();
       return;
     }
 
@@ -223,7 +287,7 @@ export function Terminal() {
     if (result.exitChatbot) setChatbotMode(false);
 
     setShellHistory((prev) => [...prev, { input: raw, output, prompt: promptAtEntry }]);
-  }, [shellInput, chatbotMode]);
+  }, [shellInput, chatbotMode, focusSubscribeForm]);
 
   const handleShellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     // Ctrl+C: cancel any in-flight chatbot response, exit chatbot mode if active,
@@ -267,244 +331,278 @@ export function Terminal() {
     }
   };
 
-  const shellPrompt = chatbotMode ? 'you \u203a' : 'subscriber@michaellamb:~$';
-  const inSubscribeFlow = stage === 'input' || stage === 'submitting' || stage === 'success' || stage === 'error';
+  const shellPrompt = chatbotMode ? 'you ›' : 'subscriber@michaellamb:~$';
+  const submitting = stage === 'submitting';
 
   return (
-    <div className="fixed inset-0 bg-terminal-bg scanlines flex flex-col font-mono overflow-hidden">
-      {/* Hidden form + iframe — form GET bypasses CORS, iframe absorbs the redirect */}
-      <form
-        ref={formRef}
-        action={HAKANAI_ENDPOINT}
-        method="get"
-        target="hakanai-frame"
-        className="hidden"
-        aria-hidden="true"
-      >
-        <input type="hidden" name="email" value={submittedEmail} />
-      </form>
+    <div className="terminal-app fixed inset-0 bg-terminal-bg scanlines flex flex-col font-mono overflow-hidden">
+      {/* Absorbs the redirect from the form GET so the page itself never navigates. */}
       <iframe
         name="hakanai-frame"
         title="newsletter-submit"
         className="hidden"
+        aria-hidden="true"
         onLoad={handleIframeLoad}
       />
 
-      {/* tmux-style top status bar */}
-      <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0">
-        <div className="flex items-center gap-3 text-terminal-green glow-dim">
+      {/* tmux-style top status bar — pure chrome, nothing focusable inside. */}
+      <div
+        className="flex items-center justify-between px-[0.5em] py-[0.25em] bg-terminal-muted text-[0.6em] shrink-0"
+        aria-hidden="true"
+      >
+        <div className="flex items-center gap-[0.7em] text-terminal-green glow-dim">
           <span>[michaellamb]</span>
           <span className="text-terminal-bar-dim">0:</span>
           <span>shell*</span>
           <span className="text-terminal-bar-dim">1:subscribe-</span>
         </div>
-        <div className="flex items-center gap-3 text-terminal-bar-dim">
-          <span>"subscriber@michaellamb"</span>
+        <div className="flex items-center gap-[0.7em] text-terminal-bar-dim">
+          <span className="hidden sm:inline">"subscriber@michaellamb"</span>
           <span className="text-terminal-green glow-dim">{clock}</span>
         </div>
       </div>
 
       {/* Terminal body — scrolls internally */}
-      <div
+      <main
         ref={scrollRef}
-        className="flex-1 min-h-0 overflow-y-auto p-4 text-sm leading-relaxed"
-        onClick={() => {
-          if (stage === 'shell') shellInputRef.current?.focus();
-          if (stage === 'input') emailInputRef.current?.focus();
+        className="flex-1 min-h-0 overflow-y-auto p-[0.6em] text-[1em] leading-relaxed"
+        onClick={(e) => {
+          // Clicking empty terminal space focuses the prompt, the way a real
+          // terminal does — but never steal focus away from a real control.
+          if ((e.target as HTMLElement).closest('a, button, input, label, form')) return;
+          shellInputRef.current?.focus();
         }}
       >
+        {/* MOTD */}
+        <h1 className="text-terminal-green glow font-bold text-[1em]">
+          michaellamb.dev newsletter shell — v1.0.0
+        </h1>
+        <p className="text-terminal-dim">
+          Enter your email below to subscribe, or type{' '}
+          <span className="text-terminal-green">help</span> for commands.
+        </p>
 
-            {/* MOTD */}
-            <div className="text-terminal-green glow font-bold">
-              michaellamb.dev newsletter shell — v1.0.0
-            </div>
-            <div className="text-terminal-dim">
-              Type <span className="text-terminal-green">`help`</span> for commands, or{' '}
-              <span className="text-terminal-green">`subscribe`</span> to join the newsletter.
-            </div>
-            <div>&nbsp;</div>
+        {/* Subscribe panel — always on the page. This is the whole point of the
+            site, so it does not hide behind a command. */}
+        <section
+          ref={subscribeRef}
+          aria-labelledby="subscribe-heading"
+          className="my-[0.7em] border border-terminal-dim rounded p-[0.6em]"
+        >
+          <h2 id="subscribe-heading" className="sr-only">
+            Subscribe to the newsletter
+          </h2>
 
-            {/* Shell history */}
-            {shellHistory.map((entry, i) => (
-              <div key={i}>
-                <div className="flex items-center text-terminal-green glow mt-1">
-                  <span className="mr-2 shrink-0">{entry.prompt}</span>
-                  <span>{entry.input}</span>
-                </div>
-                {entry.output.map((line, j) => (
-                  <div key={j} className="text-terminal-dim terminal-line">{line ? renderOutputLine(line) : '\u00a0'}</div>
-                ))}
-              </div>
-            ))}
-
-            {/* Pending chatbot response — echoes the user input, shows a
-                thinking indicator, then types the response. */}
-            {pendingChat && (
-              <div>
-                <div className="flex items-center text-terminal-green glow mt-1">
-                  <span className="mr-2 shrink-0">{pendingChat.prompt}</span>
-                  <span>{pendingChat.input}</span>
-                </div>
-                {chatPhase === 'thinking' && (
-                  <div className="text-terminal-dim mt-1">
-                    <span className="cursor-blink">thinking…</span>
-                  </div>
-                )}
-                {chatPhase === 'typing' && chatLines.map((line, j) => (
-                  <div key={j} className="text-terminal-dim terminal-line">{line ? renderOutputLine(line) : '\u00a0'}</div>
-                ))}
-              </div>
-            )}
-
-            {/* Email input prompt (subscribe sub-flow) */}
-            {inSubscribeFlow && (
-              <div className="flex items-center text-terminal-green glow mt-1">
-                <span className="mr-2 shrink-0">Enter email address:</span>
-                {stage === 'input' ? (
-                  <div
-                    className="relative flex items-center flex-1 min-w-0 cursor-text"
-                    onClick={() => emailInputRef.current?.focus()}
-                  >
-                    <input
-                      ref={emailInputRef}
-                      className="absolute inset-0 w-full h-full opacity-0 bg-transparent border-0 outline-none"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { handleEmailSubmit(); }
-                        if (e.key === 'c' && e.ctrlKey) {
-                          e.preventDefault();
-                          setEmail('');
-                          setStage('shell');
-                        }
-                      }}
-                      autoComplete="email"
-                      spellCheck={false}
-                    />
-                    <span className="text-terminal-green glow whitespace-pre">{email}</span>
-                    <span className="cursor-blink select-none">█</span>
-                  </div>
-                ) : (
-                  <span className="glow ml-1">{submittedEmail}</span>
-                )}
-              </div>
-            )}
-
-            {/* Subscribe button */}
-            {stage === 'input' && (
-              <div className="mt-4">
+          {stage !== 'success' && (
+            <form
+              ref={formRef}
+              action={HAKANAI_ENDPOINT}
+              method="get"
+              target="hakanai-frame"
+              onSubmit={handleEmailSubmit}
+              noValidate
+            >
+              <label
+                htmlFor="subscribe-email"
+                className="block text-terminal-green glow"
+              >
+                Enter email address:
+              </label>
+              <div className="flex items-center gap-[0.6em] mt-[0.3em] flex-wrap">
+                <input
+                  ref={emailInputRef}
+                  id="subscribe-email"
+                  name="email"
+                  type="email"
+                  className="terminal-input flex-1 min-w-[10ch] max-w-[26ch]"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError('');
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'c' && e.ctrlKey) {
+                      e.preventDefault();
+                      setEmail('');
+                      setEmailError('');
+                    }
+                  }}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  spellCheck={false}
+                  readOnly={submitting}
+                  aria-invalid={emailError ? true : undefined}
+                  aria-describedby={emailError ? 'subscribe-email-error' : undefined}
+                />
                 <button
-                  onClick={handleEmailSubmit}
-                  className="text-terminal-bg bg-terminal-green font-bold px-4 py-1 rounded text-xs hover:bg-terminal-dim hover:text-terminal-green transition-colors duration-150 glow"
+                  type="submit"
+                  disabled={submitting}
+                  className="text-terminal-bg bg-terminal-green font-bold px-[0.8em] py-[0.25em] rounded text-[0.7em] hover:bg-terminal-muted hover:text-terminal-green transition-colors duration-150 glow disabled:opacity-60"
                 >
                   [ SUBSCRIBE ]
                 </button>
-                <span className="ml-3 text-terminal-muted text-xs">or press Enter</span>
-                <span className="ml-4 text-terminal-muted text-xs">Ctrl+C to quit</span>
               </div>
-            )}
+              {emailError && (
+                <p
+                  id="subscribe-email-error"
+                  role="alert"
+                  className="text-terminal-error mt-[0.3em]"
+                >
+                  {emailError}
+                </p>
+              )}
+            </form>
+          )}
 
-            {/* Submitting status lines */}
-            {(stage === 'submitting' || stage === 'success' || stage === 'error') && (
-              <div className="mt-2">
-                {statusLines.map((line, i) => {
-                  const isLast = i === statusLines.length - 1;
-                  const suffix = isLast && statusDone
-                    ? stage === 'error' ? ' FAILED' : ' OK'
-                    : '';
-                  return (
-                    <div
-                      key={i}
-                      className={
-                        stage === 'error' && isLast && statusDone
-                          ? 'text-terminal-error'
-                          : 'text-terminal-green glow-dim'
-                      }
-                    >
-                      {line}{suffix}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          {/* Submit progress theatre — decorative, and it re-renders per
+              character, so it stays out of the announcement path entirely.
+              Persists through success and error the way it always has, so the
+              transcript of what happened stays on screen. */}
+          {stage !== 'idle' && (
+            <div className="mt-[0.5em]" aria-hidden="true">
+              {statusLines.map((line, i) => {
+                const isLast = i === statusLines.length - 1;
+                const suffix = isLast && statusDone
+                  ? stage === 'error' ? ' FAILED' : ' OK'
+                  : '';
+                return (
+                  <div
+                    key={i}
+                    className={
+                      stage === 'error' && isLast && statusDone
+                        ? 'text-terminal-error'
+                        : 'text-terminal-green glow-dim'
+                    }
+                  >
+                    {line}{suffix}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {submitting && (
+            <p className="sr-only" role="status">
+              Submitting your subscription.
+            </p>
+          )}
 
-            {/* Success block */}
-            {(stage === 'success' || (stage === 'shell' && submittedEmail)) && (
-              <div className="mt-3">
+          {stage === 'success' && (
+            <div className="mt-[0.5em]" role="status">
+              <div aria-hidden="true">
                 {submitLines.map((line, i) => (
-                  <div key={i} className="text-terminal-green glow">{line || '\u00a0'}</div>
+                  <div key={i} className="text-terminal-green glow">{line || ' '}</div>
                 ))}
-                <div className="mt-1 text-terminal-green glow font-bold text-base">
-                  SUBSCRIPTION CONFIRMED
-                </div>
-                <div className="text-terminal-dim mt-1">
-                  Check your inbox for a welcome email.
-                </div>
-                <div className="text-terminal-dim">
-                  You will receive new posts at:{' '}
-                  <span className="text-terminal-green">{submittedEmail}</span>
-                </div>
+              </div>
+              <p className="text-terminal-green glow font-bold text-[1.15em]">
+                ONE MORE STEP — CHECK YOUR EMAIL
+              </p>
+              <p className="text-terminal-dim mt-[0.3em]">
+                We sent a verification link to{' '}
+                <span className="text-terminal-green">{submittedEmail}</span>. You are not
+                subscribed until you click it, and the link expires — so if it goes stale,
+                run <span className="text-terminal-green">subscribe</span> again.
+              </p>
+            </div>
+          )}
+
+          {stage === 'error' && (
+            <div className="mt-[0.5em]" role="alert">
+              <p className="text-terminal-error font-bold">ERROR: CONNECTION_REFUSED</p>
+              <p className="text-terminal-dim mt-[0.3em]">
+                Could not reach the server. Check your connection, try again, or email{' '}
+                <a
+                  href="mailto:michael@michaellamb.dev"
+                  className="text-terminal-green underline"
+                >
+                  michael@michaellamb.dev
+                </a>
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* Shell history. This is the announcement surface: entries land here
+            already complete, one at a time, so a screen reader reads whole
+            command output rather than a per-character stream. */}
+        <div role="log" aria-live="polite" aria-label="Terminal output">
+          {shellHistory.map((entry, i) => (
+            <div key={i}>
+              <div className="flex items-center text-terminal-green glow mt-[0.3em]">
+                <span className="mr-2 shrink-0">{entry.prompt}</span>
+                <span>{entry.input}</span>
+              </div>
+              {entry.output.map((line, j) => (
+                <div key={j} className="text-terminal-dim terminal-line">{line ? renderOutputLine(line) : ' '}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Pending chatbot response — echoes the user input, shows a thinking
+            indicator, then types the response. Hidden from assistive tech
+            while it animates; the finished answer is announced once it commits
+            to history above. */}
+        {pendingChat && (
+          <div aria-hidden="true">
+            <div className="flex items-center text-terminal-green glow mt-[0.3em]">
+              <span className="mr-2 shrink-0">{pendingChat.prompt}</span>
+              <span>{pendingChat.input}</span>
+            </div>
+            {chatPhase === 'thinking' && (
+              <div className="text-terminal-dim mt-[0.3em]">
+                <span className="cursor-blink">thinking…</span>
               </div>
             )}
+            {chatPhase === 'typing' && chatLines.map((line, j) => (
+              <div key={j} className="text-terminal-dim terminal-line">{line ? renderOutputLine(line) : ' '}</div>
+            ))}
+          </div>
+        )}
+        {chatPhase === 'thinking' && (
+          <p className="sr-only" role="status">Thinking…</p>
+        )}
 
-            {/* Error */}
-            {stage === 'error' && (
-              <div className="mt-3">
-                <div className="text-terminal-error font-bold">ERROR: CONNECTION_REFUSED</div>
-                <div className="text-terminal-dim mt-1">
-                  Could not reach the server. Check your connection or email{' '}
-                  <a href="mailto:michael@michaellamb.dev" className="text-terminal-green underline">
-                    michael@michaellamb.dev
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {/* Live shell prompt — hidden while the chatbot is answering */}
-            {stage === 'shell' && chatPhase === 'idle' && (
-              <div
-                className="relative flex items-center text-terminal-green glow mt-1 cursor-text"
-                onClick={() => shellInputRef.current?.focus()}
-              >
-                <span className="mr-2 shrink-0">{shellPrompt}</span>
-                <input
-                  ref={shellInputRef}
-                  className="absolute inset-0 w-full h-full opacity-0 bg-transparent border-0 outline-none"
-                  type="text"
-                  value={shellInput}
-                  onChange={(e) => setShellInput(e.target.value)}
-                  onKeyDown={handleShellKeyDown}
-                  autoComplete="off"
-                  spellCheck={false}
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                />
-                <span className="text-terminal-green glow whitespace-pre">{shellInput}</span>
-                <span className="cursor-blink select-none">█</span>
-              </div>
-            )}
-
-        <div ref={bottomRef} />
-      </div>
+        {/* Live shell prompt — hidden while the chatbot is answering */}
+        {chatPhase === 'idle' && (
+          <div className="flex items-center text-terminal-green glow mt-[0.3em]">
+            <label htmlFor="shell-input" className="sr-only">
+              Terminal command
+            </label>
+            <span className="mr-2 shrink-0" aria-hidden="true">{shellPrompt}</span>
+            <input
+              ref={shellInputRef}
+              id="shell-input"
+              className="terminal-input flex-1 min-w-0"
+              type="text"
+              value={shellInput}
+              onChange={(e) => setShellInput(e.target.value)}
+              onKeyDown={handleShellKeyDown}
+              autoComplete="off"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="none"
+            />
+          </div>
+        )}
+      </main>
 
       {/* tmux-style bottom keybinds bar */}
-      <div className="flex items-center justify-between px-3 py-1 bg-terminal-muted text-xs shrink-0 text-terminal-bar-dim">
-        <div className="flex items-center gap-4">
+      <footer className="flex items-center justify-between px-[0.5em] py-[0.25em] bg-terminal-muted text-[0.6em] shrink-0 text-terminal-bar-dim">
+        {/* Keyboard-only affordances: meaningless on a touch device, and they
+            overflow a phone, so they only appear where they apply. */}
+        <div className="hidden sm:flex items-center gap-[0.9em]" aria-hidden="true">
           <span><span className="text-terminal-green glow-dim">^C</span> quit</span>
           <span><span className="text-terminal-green glow-dim">↑↓</span> history</span>
           <span><span className="text-terminal-green glow-dim">help</span> commands</span>
           <span><span className="text-terminal-green glow-dim">subscribe</span> newsletter</span>
         </div>
-        <div>
-          <a
-            href="https://blog.michaellamb.dev"
-            className="hover:text-terminal-green transition-colors"
-          >
-            ← blog.michaellamb.dev
-          </a>
-        </div>
-      </div>
+        <a
+          href="https://blog.michaellamb.dev"
+          className="ml-auto hover:text-terminal-green transition-colors underline"
+        >
+          ← blog.michaellamb.dev
+        </a>
+      </footer>
     </div>
   );
 }

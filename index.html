@@ -9,9 +9,37 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+    <style>
+      /*
+       * Inlined because the Tailwind bundle is loaded by the same JS that the
+       * <noscript> block exists to work around.
+       */
+      .ns { font-family: "JetBrains Mono", Menlo, Monaco, monospace; color: #00a32a; background: #0a0f0a; max-width: 34rem; margin: 0 auto; padding: 2rem 1rem; line-height: 1.6; }
+      .ns h1 { color: #00ff41; font-size: 1.1rem; }
+      .ns label { display: block; color: #00ff41; margin-bottom: .4rem; }
+      .ns input { font: inherit; color: #00ff41; background: transparent; border: 1px solid #00a32a; border-radius: 2px; padding: .4rem; width: 100%; box-sizing: border-box; }
+      .ns button { font: inherit; font-weight: 700; color: #0a0f0a; background: #00ff41; border: 0; border-radius: 2px; padding: .4rem 1rem; margin-top: .8rem; cursor: pointer; }
+      .ns :focus-visible { outline: 2px solid #00ff41; outline-offset: 2px; }
+      .ns a { color: #00ff41; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <main class="ns">
+        <h1>michaellamb.dev newsletter</h1>
+        <p>
+          The interactive version of this page needs JavaScript. The form below
+          does not — it subscribes you just the same.
+        </p>
+        <form action="https://hakanai.io/campaign/33c130d9-115d-4297-9a4f-543ef77b3330/subscribe" method="get">
+          <label for="ns-email">Enter email address:</label>
+          <input id="ns-email" name="email" type="email" autocomplete="email" required placeholder="you@example.com" />
+          <button type="submit">Subscribe</button>
+        </form>
+        <p><a href="https://blog.michaellamb.dev">← blog.michaellamb.dev</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
