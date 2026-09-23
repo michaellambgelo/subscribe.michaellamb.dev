@@ -242,3 +242,36 @@ describe('POST /chat sessions', () => {
     expect(h.store.get(`sess:${sessionId}`)).toBe(before);
   });
 });
+
+describe('POST /chat show detection (Laya)', () => {
+  it('adds the show Laya names to the system prompt, and nothing when it says none', async () => {
+    const h = makeHarness();
+    const real = globalThis.fetch;
+    let answer = 'parks_and_rec';
+    globalThis.fetch = (async () => new Response(JSON.stringify({ answers: { show: { choice: answer } } }))) as typeof fetch;
+    try {
+      const env = { ...h.env, LAYA_TOKEN: 't' };
+      await worker.fetch(chatRequest({ input: 'Ron would hate my salad' }), env);
+      expect(h.calls[0][0].content).toContain("The visitor's message is about Parks and Recreation.");
+      answer = 'none';
+      await worker.fetch(chatRequest({ input: 'I am hungry' }), env);
+      expect(h.calls[1][0].content).not.toContain("The visitor's message is about");
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  it('never calls Laya without a token', async () => {
+    const h = makeHarness();
+    const real = globalThis.fetch;
+    let called = false;
+    globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+    try {
+      await post(h, { input: 'Dwight' });
+      expect(called).toBe(false);
+      expect(h.calls[0][0].content).not.toContain("The visitor's message is about");
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});

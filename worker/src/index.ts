@@ -2,6 +2,7 @@ import { buildSystemPrompt, FEW_SHOT } from './system-prompt';
 import { checkTrigger } from './triggers';
 import { formatForPrompt, retrieve } from './retrieve';
 import { checkRateLimit } from './rate-limit';
+import { detectShow, SHOWS, type LayaEnv } from './laya';
 import { formatLines } from './parse';
 import {
   appendTurns,
@@ -13,7 +14,7 @@ import {
   type Session,
 } from './session';
 
-interface Env {
+interface Env extends LayaEnv {
   AI: Ai;
   RATE_LIMIT: KVNamespace;
   ALLOWED_ORIGINS: string;
@@ -93,6 +94,10 @@ async function handleChat(
     return jsonResponse({ lines: trigger }, 200, cors);
   }
 
+  // Ask Laya which show the message is about while the session loads; it
+  // resolves to null on any failure, so it can only ever add context.
+  const showPending = detectShow(env, input);
+
   // Resolve the session. A malformed id is treated as absent; a well-formed
   // but unknown or expired one gets a fresh id rather than being adopted, so
   // a caller can't choose their own KV key. Either way the turn proceeds.
@@ -109,9 +114,10 @@ async function handleChat(
   // Ground the turn in real, sourced quotes rather than letting the model
   // improvise one — improvised quotes come back misattributed.
   const quoteBlock = formatForPrompt(retrieve(input));
+  const show = await showPending;
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-    { role: 'system', content: buildSystemPrompt(session.name, quoteBlock) },
+    { role: 'system', content: buildSystemPrompt(session.name, quoteBlock, show ? SHOWS[show] : undefined) },
     ...FEW_SHOT,
     ...session.turns,
     { role: 'user', content: input },
