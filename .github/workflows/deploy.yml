@@ -15,7 +15,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Nothing gated on the suite before this job existed: the workflow went
+  # straight from `npm ci` to `npm run build`. Three easter eggs had been
+  # unreachable for as long as the matcher had been wrong, with tests present
+  # and green, because no job ever ran them.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      # The root config globs worker/test/** too, so this covers both the SPA
+      # and the worker's pure-function suites.
+      - run: npm test
+
+      # The worker has its own dependency tree and is not covered by the root
+      # install; its tsconfig pulls @cloudflare/workers-types.
+      - name: Worker typecheck
+        working-directory: worker
+        run: |
+          npm ci
+          npm run typecheck
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
