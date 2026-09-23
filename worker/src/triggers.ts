@@ -34,18 +34,46 @@ const TRIGGERS: Array<{ match: string[]; lines: string[] }> = [
   { match: ['i just blue myself', 'blue myself'], lines: ['"I just blue myself." — Tobias Fünke.', 'There it is.'] },
 ];
 
-const INDEX: Map<string, string[]> = new Map();
-for (const t of TRIGGERS) {
-  for (const m of t.match) INDEX.set(m, t.lines);
-}
-
+/**
+ * Fold an utterance to its comparison key.
+ *
+ * Punctuation is decorative for these lines: "Bears. Beets. Battlestar
+ * Galactica." is the same utterance as "bears beets battlestar galactica", and
+ * a visitor who types it the way it is actually said should not be punished for
+ * it. Stripping only TRAILING punctuation, as this did originally, meant every
+ * internally-punctuated form fell through to the model.
+ *
+ * Curly quotes are folded first because iOS and macOS autocorrect ' to U+2019,
+ * so "That's what she said" arrives from a phone as "That’s what she said".
+ * Three of the sixteen eggs were unreachable from any Apple keyboard.
+ *
+ * This stays EXACT: the whole normalized input must equal a whole normalized
+ * key. It never matches a sentence that merely contains a trigger word.
+ */
 function normalize(input: string): string {
   return input
     .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/[.!,?]+$/g, '')
+    .replace(/[\u2018\u2019\u201b\u2032]/g, "'")
+    .replace(/[\u201c\u201d\u2033]/g, '"')
+    // Apostrophes vanish rather than becoming a gap, so "li'l" keys the same
+    // as "lil" instead of splitting into "li l".
+    .replace(/'/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
+}
+
+// Keys are normalized on the way IN. They previously were not, so any match
+// string carrying punctuation could never be hit by a normalized lookup --
+// 'bears. beets. battlestar galactica.', 'cool. cool cool cool.' and 'her?'
+// were dead entries, and they were precisely the ones written to catch the
+// punctuated forms. Variants that now fold together are kept above because they
+// document the intent, and Map.set is idempotent for identical lines.
+const INDEX: Map<string, string[]> = new Map();
+for (const t of TRIGGERS) {
+  for (const m of t.match) {
+    const key = normalize(m);
+    if (key) INDEX.set(key, t.lines);
+  }
 }
 
 /**
