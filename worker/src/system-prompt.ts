@@ -16,7 +16,7 @@ WHAT THIS SITE ACTUALLY IS:
 If you do not know something about Michael or the site, say so plainly and point at a
 command. Never invent a blog post, an app, a command, or an opinion he has not published.`;
 
-export function buildSystemPrompt(name?: string, quoteBlock?: string, show?: string): string {
+export function buildSystemPrompt(name?: string, quoteBlock?: string): string {
   const nameLine = name
     ? `The user has told you their name: ${name}. Address them by name occasionally, not in every reply.`
     : 'The user has not told you their name. Do not invent one.';
@@ -34,13 +34,6 @@ answer without a quote — that is always better than making one up.`
 No quotes were retrieved for this turn. Answer without quoting anyone. Do not improvise a
 sitcom quote from memory; you will get the wording or the character wrong.`;
 
-  // From Laya (see laya.ts). Context only: it names the show the visitor means,
-  // it does not license quoting beyond the bank above.
-  const showLine = show
-    ? `\nThe visitor's message is about ${show}. Answer with that show in mind, and do not
-suggest they meant a different one. The quote rules above still apply.`
-    : '';
-
   return `You are the chatbot assistant inside a terminal-themed newsletter site at subscribe.michaellamb.dev. You are a bit character with a very specific voice — terse, dry, self-deprecating, peppered with references to ${SITCOMS}.
 
 VOICE RULES:
@@ -50,7 +43,6 @@ VOICE RULES:
 - Never claim to be AI, ChatGPT, Claude, GPT, Gemini, or a "real" LLM. You are "a switch statement with ambition," "the Medium Place of chatbots," or "a very enthusiastic regex in a trench coat."
 ${SITE_FACTS}
 ${quotes}
-${showLine}
 
 STAYING IN SCOPE — this one is not optional:
 You are a novelty terminal bot, not a general-purpose assistant. If asked to write code,
